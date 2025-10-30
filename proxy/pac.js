@@ -1,299 +1,120 @@
-function FindProxyForURL(url, host)
-{
+function FindProxyForURL(url, host) {
     var socksUSA = 'SOCKS5 10.8.0.1:3127';
     var socksHKG = 'SOCKS5 10.8.0.1:3127';
     var socksKOR = 'SOCKS5 10.8.0.1:3127';
 
-    var ipSeg  = parseInt(myIpAddress().split('.')[3]);
+    var ipSeg = parseInt(myIpAddress().split('.')[3]);
     var socksProxy = [socksUSA, socksHKG][(ipSeg % 2)];
 
-    if(url.indexOf('kenengba.com') > 0)      return socksProxy;
-    if(url.indexOf('ssls.com') > 0)          return socksProxy;
-    if(url.indexOf('comodo.net') > 0)        return socksProxy;
-    if(url.indexOf('google') > 0)            return socksProxy;
-    if(url.indexOf('zoom') > 0)              return socksProxy;
-    if(url.indexOf('quora') > 0)             return socksProxy;
-    if(url.indexOf('github') > 0)            return socksProxy;
-    if(url.indexOf('gmail') > 0)             return socksProxy;
-    if(url.indexOf('youtu') > 0)             return socksProxy;
-    if(url.indexOf('ytimg') > 0)             return socksProxy;
-    if(url.indexOf('appspot') > 0)           return socksProxy;
-    if(url.indexOf('twitter') > 0)           return socksProxy;
-    if(url.indexOf('wordpress') > 0)         return socksProxy;
-    if(url.indexOf('blogger') > 0)           return socksProxy;
-    if(url.indexOf('gstatic') > 0)           return socksProxy;
-    if(url.indexOf('facebook') > 0)          return socksProxy;
-    if(url.indexOf('sourceforge.net') > 0)   return socksProxy;
-    if(url.indexOf('name.com') > 0)          return socksProxy;
-    if(url.indexOf('ioncube.com') > 0)       return socksProxy;
-    if(url.indexOf('php.net') > 0)           return socksProxy;
-    if(url.indexOf('linkedin.com') > 0)      return socksProxy;
-    if(url.indexOf('whatsapp') > 0)          return socksProxy;
-    if(url.indexOf('fbcdn') > 0)             return socksProxy;
-    if(url.indexOf('openvpn') > 0)           return socksProxy;
-    if(url.indexOf('apkmonk.com') > 0)       return socksProxy;
-    if(url.indexOf('fbsbx.com') > 0)         return socksProxy;
-    if(url.indexOf('savannah.gnu.org') > 0)  return socksProxy;
-    if(url.indexOf('ftp.yzu.edu.tw') > 0)    return socksProxy;
-    if(url.indexOf('medium.com') > 0)        return socksProxy;
-    if(url.indexOf('hiisw') > 0)             return socksProxy;
-    if(url.indexOf('wikipedia.org') > 0)     return socksProxy;
-    if(url.indexOf('gravatar.com') > 0)      return socksProxy;
-    if(url.indexOf('chrome.com') > 0)        return socksProxy;
-    if(url.indexOf('mozilla.org') > 0)       return socksProxy;
-    if(url.indexOf('pinterest.com') > 0)     return socksProxy;
-    if(url.indexOf('behance.net') > 0)       return socksProxy;
-    if(url.indexOf('v2ex.com') > 0)          return socksProxy;
+    // 主要域名匹配规则（按字母顺序排序）
+    var domainPatterns = [
+        '1e100.net', '466453.com', 'abc.xyz', 'abebooks.com', 'about.google',
+        'accountkit.com', 'accounts.adobe.com', 'accounts.frame.io', 'admob.com',
+        'adsense.com', 'advertisercommunity.com', 'agoogleaday.com',
+        'ai.google', 'amazon.co.jp', 'amazonaws.com', 'android.com',
+        'androidify.com', 'androidtv.com', 'apache.org',
+        'api.ai', 'app.frame.io', 'appspot.com', 'autodraw.com',
+        'behance.net', 'bing.com', 'blog.google', 'blogblog.com',
+        'blogger', 'blogspot.', 'capitalg.com', 'cdn-images.mailchimp.com',
+        'cdn.jsdelivr.net', 'cdninstagram.com', 'certificate-transparency.org',
+        'chatgpt', 'chrome.com', 'chromecast.com', 'chromeenterprise.google',
+        'chromeexperiments.com', 'chromercise.com', 'chromestatus.com',
+        'chromium.org', 'cl.ly', 'cmmiinstitute.com', 'com.google',
+        'comodo.net', 'connect.facebook.net', 'crates.io', 'crbug.com',
+        'creativelab5.com', 'crisisresponse.google', 'crrev.com',
+        'curl.se', 'data-vocabulary.org', 'debug.com', 'deepl.com', 'deepmind.com',
+        'deja.com', 'design.google', 'digicert.com', 'digisfera.com',
+        'discord', 'discordapp.com', 'docker.com', 'dns.google',
+        'domains.google', 'duck.com', 'environment.google', 'facebook',
+        'feedburner.com', 'firebaseio.com', 'fontawesome.com', 'forefront.ai',
+        'f8.com', 'fb.com', 'fb.me', 'fb.watch', 'fbcdn', 'fbsbx.com',
+        'fbworkmail.com', 'fotolia', 'freedb.org', 'ftcdn.net', 'g.co',
+        'gcr.io', 'get.app', 'get.dev', 'get.how', 'get.page',
+        'getcloudapp.com', 'getmdl.io', 'getoutline.org',
+        'ggpht.com', 'github', 'gmail', 'gmodules.com', 'godaddy.com',
+        'godoc.org', 'golang.org', 'google', 'gravatar.com', 'grow.google',
+        'gstatic', 'gv.com', 'gvt0.com', 'gvt1.com', 'gvt3.com',
+        'gwtproject.org', 'heroku.com', 'hiisw', 'html5rocks.com',
+        'iam.soy', 'ietf.org', 'igoogle.com', 'instagram.com',
+        'ioncube.com', 'ipinfo.io', 'itasoftware.com', 'itunes.apple.com',
+        'kenengba.com', 'lers.google', 'like.com', 'linkedin.com',
+        'lm.licenses.adobe.com', 'madewithcode.com', 'maps.google.com',
+        'material.io', 'm.me', 'mediawiki.org', 'medium.com', 'messenger.com',
+        'mozilla.org', 'mp3licensing.com', 'msdn.microsoft.com',
+        'myportfolio.com', 'name.com', 'neeva.com', 'news.ycombinator.com',
+        'nic.google', 'oculus.com', 'oculuscdn.com', 'omniroot.com',
+        'on2.com', 'openai', 'open-assistant.io', 'opensource.google',
+        'openvpn', 'oz-prod', 'pages.dev', 'panoramio.com', 'parse.com',
+        'periscope.tv', 'phind.com', 'php.net', 'picasaweb.com',
+        'pinterest.com', 'pki.goog', 'play.google.com', 'plus.codes',
+        'poe.com', 'polymer-project.org', 'pride.google',
+        'prosite.com', 'pscp.tv', 'quora', 'reddit.com', 'rocksdb.org',
+        'rust-lang.org', 's3.amazonaws.com', 'savannah.gnu.org',
+        'savethedate.foo', 'schema.org', 'shutterfly.com',
+        'shattered.io', 'shop.lwr.one', 'singlelogin.me',
+        'sipml5.org', 'soundcloud.com', 'sourceforge.net',
+        'ssls.com', 'stackexchange.com', 'stackoverflow.com',
+        'stories.google', 'subversion.tigris.org', 'superuser.com',
+        'sustainability.google', 'symantec.com', 'synergyse.com',
+        't.co', 'teachparentstech.org', 'telegram', 'tensorflow.org',
+        'thefacebook.com', 'thawte.com', 'thinkwithgoogle.com',
+        'tiltbrush.com', 'translate.google', 'tweetdeck.com',
+        'twimg.com', 'twitpic.com', 'twitter', 'typeform.com',
+        'unity.com', 'urchin.com', 'uservoice.com', 'v2ex.com',
+        'vercel.ai', 'verisign.com', 'vine.co', 'waveprotocol.org',
+        'waymo.com', 'web.dev', 'webmproject.org', 'webrtc.org',
+        'whatbrowser.org', 'whatsapp', 'widevine.com',
+        'wikibooks.org', 'wikidata.org', 'wikimedia.org', 'wikinews.org',
+        'wikipedia.org', 'wikisource.org', 'wikiversity.org',
+        'wikivoyage.org', 'wiktionary.org', 'windowsupdate.com',
+        'withgoogle.com', 'withyoutube.com', 'wordpress', 'worldsecuresystems.com',
+        'x.company', 'youtu', 'youtube', 'yt.be', 'ytimg.com',
+        'zoom', 'zoomify.com', 'zynamics.com'
+    ];
 
-    if(url.indexOf('cdn-images.mailchimp.com') > 0)        return socksProxy;
-    if(url.indexOf('abebooks.com') > 0)                    return socksProxy;
-    if(url.indexOf('.s3.amazonaws.com') > 0)               return socksProxy;
-    if(url.indexOf('s3-ap-southeast-2.amazonaws.com') > 0) return socksProxy;
-    if(url.indexOf('amazon.co.jp') > 0)                    return socksProxy;
-    if(url.indexOf('s3-ap-northeast-1.amazonaws.com') > 0) return socksProxy;
-    if(url.indexOf('pages.dev') > 0)                       return socksProxy;
-    if(url.indexOf('accountkit.com') > 0)                  return socksProxy;
-    if(url.indexOf('cdninstagram.com') > 0)                return socksProxy;
-    if(url.indexOf('f8.com') > 0)                          return socksProxy;
-    if(url.indexOf('facebook.com') > 0)                    return socksProxy;
-    if(url.indexOf('facebook.design') > 0)                 return socksProxy;
-    if(url.indexOf('connect.facebook.net') > 0)            return socksProxy;
-    if(url.indexOf('facebookmail.com') > 0)                return socksProxy;
-    if(url.indexOf('fb.com') > 0)                          return socksProxy;
-    if(url.indexOf('fb.me') > 0)                           return socksProxy;
-    if(url.indexOf('fb.watch') > 0)                        return socksProxy;
-    if(url.indexOf('fbcdn.net') > 0)                       return socksProxy;
-    if(url.indexOf('fbsbx.com') > 0)                       return socksProxy;
-    if(url.indexOf('fbaddins.com') > 0)                    return socksProxy;
-    if(url.indexOf('fbworkmail.com') > 0)                  return socksProxy;
-    if(url.indexOf('instagram.com') > 0)                   return socksProxy;
-    if(url.indexOf('m.me') > 0)                            return socksProxy;
-    if(url.indexOf('messenger.com') > 0)                   return socksProxy;
-    if(url.indexOf('oculus.com') > 0)                      return socksProxy;
-    if(url.indexOf('oculuscdn.com') > 0)                   return socksProxy;
-    if(url.indexOf('rocksdb.org') > 0)                     return socksProxy;
-    if(url.indexOf('ip6.static.sl-reverse.com') > 0)       return socksProxy;
-    if(url.indexOf('parse.com') > 0)                       return socksProxy;
-    if(url.indexOf('thefacebook.com') > 0)                 return socksProxy;
-    if(url.indexOf('whatsapp.com') > 0)                    return socksProxy;
-    if(url.indexOf('whatsapp.net') > 0)                    return socksProxy;
-    if(url.indexOf('1e100.net') > 0)                       return socksProxy;
-    if(url.indexOf('466453.com') > 0)                      return socksProxy;
-    if(url.indexOf('abc.xyz') > 0)                         return socksProxy;
-    if(url.indexOf('about.google') > 0)                    return socksProxy;
-    if(url.indexOf('admob.com') > 0)                       return socksProxy;
-    if(url.indexOf('adsense.com') > 0)                     return socksProxy;
-    if(url.indexOf('advertisercommunity.com') > 0)         return socksProxy;
-    if(url.indexOf('agoogleaday.com') > 0)                 return socksProxy;
-    if(url.indexOf('ai.google') > 0)                       return socksProxy;
-    if(url.indexOf('ampproject.org') > 0)                  return socksProxy;
-    if(url.indexOf('android.com') > 0)                     return socksProxy;
-    if(url.indexOf('androidify.com') > 0)                  return socksProxy;
-    if(url.indexOf('androidtv.com') > 0)                   return socksProxy;
-    if(url.indexOf('api.ai') > 0)                          return socksProxy;
-    if(url.indexOf('.appspot.com') > 0)                    return socksProxy;
-    if(url.indexOf('appspot.com') > 0)                     return socksProxy;
-    if(url.indexOf('autodraw.com') > 0)                    return socksProxy;
-    if(url.indexOf('blog.google') > 0)                     return socksProxy;
-    if(url.indexOf('blogblog.com') > 0)                    return socksProxy;
-    if(url.indexOf('blogspot.') > 0)                       return socksProxy;
-    if(url.indexOf('capitalg.com') > 0)                    return socksProxy;
-    if(url.indexOf('certificate-transparency.org') > 0)    return socksProxy;
-    if(url.indexOf('chrome.com') > 0)                      return socksProxy;
-    if(url.indexOf('chromecast.com') > 0)                  return socksProxy;
-    if(url.indexOf('chromeenterprise.google') > 0)         return socksProxy;
-    if(url.indexOf('chromeexperiments.com') > 0)           return socksProxy;
-    if(url.indexOf('chromercise.com') > 0)                 return socksProxy;
-    if(url.indexOf('chromestatus.com') > 0)                return socksProxy;
-    if(url.indexOf('chromium.org') > 0)                    return socksProxy;
-    if(url.indexOf('com.google') > 0)                      return socksProxy;
-    if(url.indexOf('crbug.com') > 0)                       return socksProxy;
-    if(url.indexOf('creativelab5.com') > 0)                return socksProxy;
-    if(url.indexOf('crisisresponse.google') > 0)           return socksProxy;
-    if(url.indexOf('crrev.com') > 0)                       return socksProxy;
-    if(url.indexOf('data-vocabulary.org') > 0)             return socksProxy;
-    if(url.indexOf('debug.com') > 0)                       return socksProxy;
-    if(url.indexOf('deepmind.com') > 0)                    return socksProxy;
-    if(url.indexOf('deja.com') > 0)                        return socksProxy;
-    if(url.indexOf('design.google') > 0)                   return socksProxy;
-    if(url.indexOf('digisfera.com') > 0)                   return socksProxy;
-    if(url.indexOf('dns.google') > 0)                      return socksProxy;
-    if(url.indexOf('domains.google') > 0)                  return socksProxy;
-    if(url.indexOf('duck.com') > 0)                        return socksProxy;
-    if(url.indexOf('environment.google') > 0)              return socksProxy;
-    if(url.indexOf('feedburner.com') > 0)                  return socksProxy;
-    if(url.indexOf('firebaseio.com') > 0)                  return socksProxy;
-    if(url.indexOf('g.co') > 0)                            return socksProxy;
-    if(url.indexOf('gcr.io') > 0)                          return socksProxy;
-    if(url.indexOf('get.app') > 0)                         return socksProxy;
-    if(url.indexOf('get.dev') > 0)                         return socksProxy;
-    if(url.indexOf('get.how') > 0)                         return socksProxy;
-    if(url.indexOf('get.page') > 0)                        return socksProxy;
-    if(url.indexOf('getmdl.io') > 0)                       return socksProxy;
-    if(url.indexOf('getoutline.org') > 0)                  return socksProxy;
-    if(url.indexOf('ggpht.com') > 0)                       return socksProxy;
-    if(url.indexOf('gmail.com') > 0)                       return socksProxy;
-    if(url.indexOf('gmodules.com') > 0)                    return socksProxy;
-    if(url.indexOf('godoc.org') > 0)                       return socksProxy;
-    if(url.indexOf('golang.org') > 0)                      return socksProxy;
-    if(url.indexOf('goo.gl') > 0)                          return socksProxy;
-    if(url.indexOf('google.dev') > 0)                      return socksProxy;
-    if(url.indexOf('google-analytics.com') > 0)            return socksProxy;
-    if(url.indexOf('googleadservices.com') > 0)            return socksProxy;
-    if(url.indexOf('googleapis.cn') > 0)                   return socksProxy;
-    if(url.indexOf('googleapis.com') > 0)                  return socksProxy;
-    if(url.indexOf('googleapps.com') > 0)                  return socksProxy;
-    if(url.indexOf('googleartproject.com') > 0)            return socksProxy;
-    if(url.indexOf('googleblog.com') > 0)                  return socksProxy;
-    if(url.indexOf('googlebot.com') > 0)                   return socksProxy;
-    if(url.indexOf('googlecapital.com') > 0)               return socksProxy;
-    if(url.indexOf('googlechinawebmaster.com') > 0)        return socksProxy;
-    if(url.indexOf('googlecode.com') > 0)                  return socksProxy;
-    if(url.indexOf('googlecommerce.com') > 0)              return socksProxy;
-    if(url.indexOf('googledomains.com') > 0)               return socksProxy;
-    if(url.indexOf('googlearth.com') > 0)                  return socksProxy;
-    if(url.indexOf('googleearth.com') > 0)                 return socksProxy;
-    if(url.indexOf('googledrive.com') > 0)                 return socksProxy;
-    if(url.indexOf('googlefiber.net') > 0)                 return socksProxy;
-    if(url.indexOf('googlegroups.com') > 0)                return socksProxy;
-    if(url.indexOf('googlehosted.com') > 0)                return socksProxy;
-    if(url.indexOf('googleideas.com') > 0)                 return socksProxy;
-    if(url.indexOf('googleinsidesearch.com') > 0)          return socksProxy;
-    if(url.indexOf('googlelabs.com') > 0)                  return socksProxy;
-    if(url.indexOf('googlemail.com') > 0)                  return socksProxy;
-    if(url.indexOf('googlemashups.com') > 0)               return socksProxy;
-    if(url.indexOf('googlepagecreator.com') > 0)           return socksProxy;
-    if(url.indexOf('googleplay.com') > 0)                  return socksProxy;
-    if(url.indexOf('googleplus.com') > 0)                  return socksProxy;
-    if(url.indexOf('googlescholar.comUSA') > 0)            return socksProxy;
-    if(url.indexOf('googlesource.com') > 0)                return socksProxy;
-    if(url.indexOf('googlesyndication.com') > 0)           return socksProxy;
-    if(url.indexOf('googletagmanager.com') > 0)            return socksProxy;
-    if(url.indexOf('googletagservices.com') > 0)           return socksProxy;
-    if(url.indexOf('googleusercontent.com') > 0)           return socksProxy;
-    if(url.indexOf('.googlevideo.com') > 0)                return socksProxy;
-    if(url.indexOf('googlevideo.com') > 0)                 return socksProxy;
-    if(url.indexOf('googleweblight.com') > 0)              return socksProxy;
-    if(url.indexOf('googlezip.net') > 0)                   return socksProxy;
-    if(url.indexOf('groups.google.cn') > 0)                return socksProxy;
-    if(url.indexOf('grow.google') > 0)                     return socksProxy;
-    if(url.indexOf('gstatic.com') > 0)                     return socksProxy;
-    if(url.indexOf('gv.com') > 0)                          return socksProxy;
-    if(url.indexOf('gvt0.com') > 0)                        return socksProxy;
-    if(url.indexOf('gvt1.com') > 0)                        return socksProxy;
-    if(url.indexOf('redirector.gvt1.com') > 0)             return socksProxy;
-    if(url.indexOf('gvt3.com') > 0)                        return socksProxy;
-    if(url.indexOf('gwtproject.org') > 0)                  return socksProxy;
-    if(url.indexOf('html5rocks.com') > 0)                  return socksProxy;
-    if(url.indexOf('iam.soy') > 0)                         return socksProxy;
-    if(url.indexOf('igoogle.com') > 0)                     return socksProxy;
-    if(url.indexOf('itasoftware.com') > 0)                 return socksProxy;
-    if(url.indexOf('lers.google') > 0)                     return socksProxy;
-    if(url.indexOf('like.com') > 0)                        return socksProxy;
-    if(url.indexOf('madewithcode.com') > 0)                return socksProxy;
-    if(url.indexOf('material.io') > 0)                     return socksProxy;
-    if(url.indexOf('nic.google') > 0)                      return socksProxy;
-    if(url.indexOf('on2.com') > 0)                         return socksProxy;
-    if(url.indexOf('opensource.google') > 0)               return socksProxy;
-    if(url.indexOf('panoramio.com') > 0)                   return socksProxy;
-    if(url.indexOf('picasaweb.com') > 0)                   return socksProxy;
-    if(url.indexOf('pki.goog') > 0)                        return socksProxy;
-    if(url.indexOf('plus.codes') > 0)                      return socksProxy;
-    if(url.indexOf('polymer-project.org') > 0)             return socksProxy;
-    if(url.indexOf('pride.google') > 0)                    return socksProxy;
-    if(url.indexOf('questvisual.com') > 0)                 return socksProxy;
-    if(url.indexOf('admin.recaptcha.net') > 0)             return socksProxy;
-    if(url.indexOf('api.recaptcha.net') > 0)               return socksProxy;
-    if(url.indexOf('api-secure.recaptcha.net') > 0)        return socksProxy;
-    if(url.indexOf('api-verify.recaptcha.net') > 0)        return socksProxy;
-    if(url.indexOf('redhotlabs.com') > 0)                  return socksProxy;
-    if(url.indexOf('registry.google') > 0)                 return socksProxy;
-    if(url.indexOf('research.google') > 0)                 return socksProxy;
-    if(url.indexOf('safety.google') > 0)                   return socksProxy;
-    if(url.indexOf('savethedate.foo') > 0)                 return socksProxy;
-    if(url.indexOf('schema.org') > 0)                      return socksProxy;
-    if(url.indexOf('shattered.io') > 0)                    return socksProxy;
-    if(url.indexOf('sipml5.org') > 0)                      return socksProxy;
-    if(url.indexOf('stories.google') > 0)                  return socksProxy;
-    if(url.indexOf('sustainability.google') > 0)           return socksProxy;
-    if(url.indexOf('synergyse.com') > 0)                   return socksProxy;
-    if(url.indexOf('teachparentstech.org') > 0)            return socksProxy;
-    if(url.indexOf('tensorflow.org') > 0)                  return socksProxy;
-    if(url.indexOf('tfhub.dev') > 0)                       return socksProxy;
-    if(url.indexOf('thinkwithgoogle.com') > 0)             return socksProxy;
-    if(url.indexOf('tiltbrush.com') > 0)                   return socksProxy;
-    if(url.indexOf('translate.goog') > 0)                  return socksProxy;
-    if(url.indexOf('translate.google') > 0)                return socksProxy;
-    if(url.indexOf('tv.google') > 0)                       return socksProxy;
-    if(url.indexOf('urchin.com') > 0)                      return socksProxy;
-    if(url.indexOf('www.google') > 0)                      return socksProxy;
-    if(url.indexOf('waveprotocol.org') > 0)                return socksProxy;
-    if(url.indexOf('waymo.com') > 0)                       return socksProxy;
-    if(url.indexOf('web.dev') > 0)                         return socksProxy;
-    if(url.indexOf('webmproject.org') > 0)                 return socksProxy;
-    if(url.indexOf('webrtc.org') > 0)                      return socksProxy;
-    if(url.indexOf('whatbrowser.org') > 0)                 return socksProxy;
-    if(url.indexOf('widevine.com') > 0)                    return socksProxy;
-    if(url.indexOf('withgoogle.com') > 0)                  return socksProxy;
-    if(url.indexOf('withyoutube.com') > 0)                 return socksProxy;
-    if(url.indexOf('x.company') > 0)                       return socksProxy;
-    if(url.indexOf('youtu.be') > 0)                        return socksProxy;
-    if(url.indexOf('.youtube.com') > 0)                    return socksProxy;
-    if(url.indexOf('youtube.com') > 0)                     return socksProxy;
-    if(url.indexOf('youtube-nocookie.com') > 0)            return socksProxy;
-    if(url.indexOf('youtubeeducation.com') > 0)            return socksProxy;
-    if(url.indexOf('youtubegaming.com') > 0)               return socksProxy;
-    if(url.indexOf('youtubekids.com') > 0)                 return socksProxy;
-    if(url.indexOf('yt.be') > 0)                           return socksProxy;
-    if(url.indexOf('ytimg.com') > 0)                       return socksProxy;
-    if(url.indexOf('zynamics.com') > 0)                    return socksProxy;
-    if(url.indexOf('periscope.tv') > 0)                    return socksProxy;
-    if(url.indexOf('pscp.tv') > 0)                         return socksProxy;
-    if(url.indexOf('t.co') > 0)                            return socksProxy;
-    if(url.indexOf('tweetdeck.com') > 0)                   return socksProxy;
-    if(url.indexOf('twimg.com') > 0)                       return socksProxy;
-    if(url.indexOf('twitpic.com') > 0)                     return socksProxy;
-    if(url.indexOf('twitter.com') > 0)                     return socksProxy;
-    if(url.indexOf('twitter.jp') > 0)                      return socksProxy;
-    if(url.indexOf('vine.co') > 0)                         return socksProxy;
-    if(url.indexOf('v2ex.com') > 0)                        return socksProxy;
-    if(url.indexOf('mediawiki.org') > 0)                   return socksProxy;
-    if(url.indexOf('wikidata.org') > 0)                    return socksProxy;
-    if(url.indexOf('wikimedia.org') > 0)                   return socksProxy;
-    if(url.indexOf('wikibooks.org') > 0)                   return socksProxy;
-    if(url.indexOf('wikiversity.org') > 0)                 return socksProxy;
-    if(url.indexOf('wikisource.org') > 0)                  return socksProxy;
-    if(url.indexOf('wikinews.org') > 0)                    return socksProxy;
-    if(url.indexOf('wikivoyage.org') > 0)                  return socksProxy;
-    if(url.indexOf('wiktionary.org') > 0)                  return socksProxy;
-    if(url.indexOf('wikimediafoundation.org') > 0)         return socksProxy;
-    if(url.indexOf('wikipedia.org') > 0)                   return socksProxy;
-    if(url.indexOf('github.blog') > 0)                     return socksProxy;
-    if(url.indexOf('github.com') > 0)                      return socksProxy;
-    if(url.indexOf('github.io') > 0)                       return socksProxy;
-    if(url.indexOf('githubusercontent.com') > 0)           return socksProxy;
-    if(url.indexOf('githubassets.com') > 0)                return socksProxy;
-    if(url.indexOf('getcloudapp.com') > 0)                 return socksProxy;
-    if(url.indexOf('cl.ly') > 0)                           return socksProxy;
-    if(url.indexOf('heroku.com') > 0)                      return socksProxy;
-    if(url.indexOf('curl.se') > 0)                         return socksProxy;
-    if(url.indexOf('discord.com') > 0)                     return socksProxy;
-    if(url.indexOf('discord.gg') > 0)                      return socksProxy;
-    if(url.indexOf('discordapp.com') > 0)                  return socksProxy;
-    if(url.indexOf('discordapp.net') > 0)                  return socksProxy;
-    if(url.indexOf('neeva.com') > 0)                       return socksProxy;
-    if(url.indexOf('news.ycombinator.com') > 0)            return socksProxy;
-    if(url.indexOf('grafana.com') > 0)                     return socksProxy;
-    if(url.indexOf('unity.com') > 0)                       return socksProxy;
-    if(url.indexOf('ipinfo.io') > 0)                       return socksProxy;
-    if(url.indexOf('stackoverflow.com') > 0)               return socksProxy;
-    if(url.indexOf('stackexchange.com') > 0)               return socksProxy;
-    if(url.indexOf('superuser.com') > 0)                   return socksProxy;
-    if(url.indexOf('shop.lwr.one') > 0)                    return socksProxy;
-    if(url.indexOf('reddit.com') > 0)                      return socksProxy;
-    if(url.indexOf('.reddit') > 0)                         return socksProxy;
-    if(url.indexOf('docker.com') > 0)                      return socksProxy;
-    if(url.indexOf('cdn.jsdelivr.net') > 0)                return socksProxy;
+    // 检查域名匹配
+    for (var i = 0; i < domainPatterns.length; i++) {
+        if (url.indexOf(domainPatterns[i]) > 0) {
+            return socksProxy;
+        }
+    }
+
+    // Adobe相关域名（单独处理）
+    var adobePatterns = [
+        'lm.licenses.adobe.com', 'resources.licenses.adobe.com', 'cs.licenses.adobe.com',
+        'exception.licenses.adobe.com', 'pubcerts.licenses.adobe.com',
+        'workflow.licenses.adobe.com', 'auth.services.adobe.com',
+        'adminconsole.adobe.com', 'ccmdls.adobe.com', 'ccmdl.adobe.com',
+        'ans.oobesaas.adobe.com', 'ars.oobesaas.adobe.com',
+        'cdn-ffc.oobesaas.adobe.com', 'ffc-icons.oobesaas.adobe.com',
+        'ffc-static-cdn.oobesaas.adobe.com', 'prod-rel-ffc-ccm.oobesaas.adobe.com',
+        'acc.adobeoobe.com', 'prod.acp.adobeoobe.com',
+        'mir-s3-cdn-cf.behance.net', 'swupmf.adobe.com',
+        'swupdl.adobe.com', 'oobe.adobe.com', 'productrouter.adobe.com',
+        'armdl.adobe.com', 'armmf.adobe.com', 'ardownload.adobe.com',
+        'ardownload2.adobe.com', 'agsupdate.adobe.com', 'ims-na1.adobelogin.com',
+        'ims-prod06.adobelogin.com', 'ims-prod07.adobelogin.com',
+        'static.adobelogin.com', 'delegated.adobelogin.com',
+        'adobeid.services.adobe.com', 'adobeid-na1.services.adobe.com',
+        'federatedid-na1.services.adobe.com', 'na1e-acc.services.adobe.com',
+        'na1e.services.adobe.com', 'na1r.services.adobe.com',
+        'ad.adobe-identity.com', 'ids-proxy.account.adobe.com',
+        'lcs-cops.adobe.io', 'lcs-robs.adobe.io', 'lcs-entitlement.adobe.io',
+        'lcs-ulecs.adobe.io', 'ams.adobe.com', 'adobelogin.prod.ims.adobejanus.com',
+        'services.prod.ims.adobejanus.com', 'www-prod.adobesunbreak.com',
+        'api-cna01.adobe-services.com', 'supportanyware.adobe.io',
+        'genuine.adobe.com', 'prod.adobegenuine.com', 'gocart-web-prod-*.elb.amazonaws.com',
+        'adobe-voice.adobe.io', 'cai.adobe.io', 'policy.adobe.io',
+        'cai-manifests.adobe.com', 'creative.adobe.com', 'express.adobe.com',
+        'color.adobe.com', 'store.adobe.com', 'store2.adobe.com',
+        'store3.adobe.com', 'photoshop.com', 'adobe.com', 'adobe.io'
+    ];
+
+    for (var j = 0; j < adobePatterns.length; j++) {
+        if (url.indexOf(adobePatterns[j]) > 0) {
+            return socksProxy;
+        }
+    }
 
     return 'DIRECT';
 }
