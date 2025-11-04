@@ -1,10 +1,18 @@
 function FindProxyForURL(url, host) {
-    var socksUSA = 'SOCKS5 10.8.0.1:3127';
-    var socksHKG = 'SOCKS5 10.8.0.1:3127';
-    var socksKOR = 'SOCKS5 10.8.0.1:3127';
+    var httpProxy = 'PROXY 10.8.0.1:3129';
+    var socksProxy = 'SOCKS5 10.8.0.1:3127';
 
-    var ipSeg = parseInt(myIpAddress().split('.')[3]);
-    var socksProxy = [socksUSA, socksHKG][(ipSeg % 2)];
+    var httpProxySG = 'PROXY 10.9.0.1:3129';
+    var socksProxySG = 'SOCKS5 10.9.0.1:3127';
+
+    // 判断设备，如果是手机则使用HTTP代理
+    var isMobile = /(iPhone|iPad|iPod|iOS|Android)/i.test(navigator.userAgent);
+
+    // 检查gpt网站
+    if (url.indexOf('chatgpt') > 0) {
+        return isMobile ? `${httpProxySG}; ${socksProxySG}; DIRECT` : socksProxySG;
+    }
+
 
     // 主要域名匹配规则（按字母顺序排序）
     var domainPatterns = [
@@ -75,7 +83,7 @@ function FindProxyForURL(url, host) {
     // 检查域名匹配
     for (var i = 0; i < domainPatterns.length; i++) {
         if (url.indexOf(domainPatterns[i]) > 0) {
-            return socksProxy;
+            return isMobile ? `${httpProxy}; ${socksProxy}; DIRECT` : socksProxy;
         }
     }
 
@@ -112,7 +120,7 @@ function FindProxyForURL(url, host) {
 
     for (var j = 0; j < adobePatterns.length; j++) {
         if (url.indexOf(adobePatterns[j]) > 0) {
-            return socksProxy;
+            return isMobile ? `${httpProxy}; ${socksProxy}; DIRECT` : socksProxy;
         }
     }
 
