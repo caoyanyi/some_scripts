@@ -17,10 +17,10 @@ apt install -y ufw
 echo "正在安装http代理……"
 apt install -y tinyproxy
 
-sed -i "s/Port \d\+/Port ${HTTP_PORT}/" /etc/tinyproxy/tinyproxy.conf
-sed -i "s/Listen \w\+/Listen ${LISTEN_IP}/" /etc/tinyproxy/tinyproxy.conf
-sed -i "s/Allow \w\+/Allow ${BACKEND_IP}/" /etc/tinyproxy/tinyproxy.conf
-sed -i "s/#DisableViaHeader \w\+/DisableViaHeader Yes/" /etc/tinyproxy/tinyproxy.conf
+sed -i "s/Port 8888/Port ${HTTP_PORT}/g" /etc/tinyproxy/tinyproxy.conf
+sed -i "s/#Listen 10.168.0.1/Listen ${LISTEN_IP}/g" /etc/tinyproxy/tinyproxy.conf
+sed -i "s/Allow 10.0.0.0/Allow ${BACKEND_IP}/g" /etc/tinyproxy/tinyproxy.conf
+sed -i "s/#DisableViaHeader \w\+/DisableViaHeader Yes/g" /etc/tinyproxy/tinyproxy.conf
 
 systemctl restart tinyproxy
 systemctl enable tinyproxy
@@ -31,10 +31,11 @@ ufw allow ${HTTP_PORT}
 echo "正在安装socket代理……"
 apt install -y dante-server
 
+# eth0 是本机的网卡, 用ip a查看
 cat > /etc/danted.conf << EOF
 logoutput: syslog
 internal: ${LISTEN_IP} port = ${SOCKET_PORT}
-external: eth0  # 替换为你的网卡名称，可用 `ip a` 查看
+external: eth0
 method: none
 user.notprivileged: nobody
 
