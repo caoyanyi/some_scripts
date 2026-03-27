@@ -127,7 +127,7 @@ if [ -z "$REPO_FILE" ]; then
 	esac
 fi
 
-mirror=''
+mirror='Aliyun'
 DRY_RUN=${DRY_RUN:-}
 REPO_ONLY=${REPO_ONLY:-0}
 NO_AUTOSTART=${NO_AUTOSTART:-0}
