@@ -81,6 +81,12 @@ class MetricsSnapshot:
     max_disk_percent: float | None
     process_count: int
     watched_process_count: int
+    memory_total_bytes: int | None = None
+    memory_used_bytes: int | None = None
+    swap_total_bytes: int | None = None
+    swap_used_bytes: int | None = None
+    disk_total_bytes: int | None = None
+    disk_used_bytes: int | None = None
 
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -177,10 +183,28 @@ def ensure_history_db(db_path: Path) -> None:
                 temperature_celsius REAL,
                 memory_percent REAL,
                 max_disk_percent REAL,
+                memory_total_bytes INTEGER,
+                memory_used_bytes INTEGER,
+                swap_total_bytes INTEGER,
+                swap_used_bytes INTEGER,
+                disk_total_bytes INTEGER,
+                disk_used_bytes INTEGER,
                 process_count INTEGER NOT NULL,
                 watched_process_count INTEGER NOT NULL
             )
             """
+        )
+        ensure_columns(
+            connection,
+            "metric_samples",
+            {
+                "memory_total_bytes": "INTEGER",
+                "memory_used_bytes": "INTEGER",
+                "swap_total_bytes": "INTEGER",
+                "swap_used_bytes": "INTEGER",
+                "disk_total_bytes": "INTEGER",
+                "disk_used_bytes": "INTEGER",
+            },
         )
         connection.execute(
             """
@@ -214,6 +238,15 @@ def ensure_history_db(db_path: Path) -> None:
         connection.execute("CREATE INDEX IF NOT EXISTS idx_findings_timestamp ON findings(timestamp)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_findings_key ON findings(finding_key)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_process_samples_timestamp ON process_samples(timestamp)")
+
+
+def ensure_columns(connection: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+    if table != "metric_samples":
+        raise ValueError(f"unexpected table for schema migration: {table}")
+    existing_columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+    for column_name, column_type in columns.items():
+        if column_name not in existing_columns:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column_name} {column_type}")
 
 
 def prune_history(db_path: Path, retention_days: int, now: int) -> None:
@@ -271,9 +304,15 @@ def save_history_sample(
                 temperature_celsius,
                 memory_percent,
                 max_disk_percent,
+                memory_total_bytes,
+                memory_used_bytes,
+                swap_total_bytes,
+                swap_used_bytes,
+                disk_total_bytes,
+                disk_used_bytes,
                 process_count,
                 watched_process_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 snapshot.timestamp,
@@ -283,6 +322,12 @@ def save_history_sample(
                 snapshot.temperature_celsius,
                 snapshot.memory_percent,
                 snapshot.max_disk_percent,
+                snapshot.memory_total_bytes,
+                snapshot.memory_used_bytes,
+                snapshot.swap_total_bytes,
+                snapshot.swap_used_bytes,
+                snapshot.disk_total_bytes,
+                snapshot.disk_used_bytes,
                 snapshot.process_count,
                 snapshot.watched_process_count,
             ),
@@ -347,7 +392,7 @@ def get_cpu_count() -> int:
     return os.cpu_count() or 1
 
 
-def read_memory_percent() -> float | None:
+def read_meminfo() -> dict[str, int] | None:
     meminfo: dict[str, int] = {}
     try:
         with Path("/proc/meminfo").open("r", encoding="utf-8") as meminfo_file:
@@ -356,15 +401,46 @@ def read_memory_percent() -> float | None:
                 meminfo[key] = int(value.strip().split()[0])
     except (OSError, ValueError):
         return None
+    return meminfo
 
+
+def read_memory_stats() -> dict[str, int | float | None]:
+    meminfo = read_meminfo()
+    if not meminfo:
+        return {
+            "memory_percent": None,
+            "memory_total_bytes": None,
+            "memory_used_bytes": None,
+            "swap_total_bytes": None,
+            "swap_used_bytes": None,
+        }
     total = meminfo.get("MemTotal")
     available = meminfo.get("MemAvailable")
-    if not total or available is None:
-        return None
-    return ((total - available) / total) * 100
+    if total and available is not None:
+        memory_used_kb = total - available
+        memory_percent = (memory_used_kb / total) * 100
+    else:
+        memory_used_kb = None
+        memory_percent = None
+
+    swap_total = meminfo.get("SwapTotal")
+    swap_free = meminfo.get("SwapFree")
+    swap_used_kb = None if swap_total is None or swap_free is None else max(0, swap_total - swap_free)
+    return {
+        "memory_percent": memory_percent,
+        "memory_total_bytes": total * 1024 if total else None,
+        "memory_used_bytes": memory_used_kb * 1024 if memory_used_kb is not None else None,
+        "swap_total_bytes": swap_total * 1024 if swap_total is not None else None,
+        "swap_used_bytes": swap_used_kb * 1024 if swap_used_kb is not None else None,
+    }
 
 
-def read_disk_percent(disk_path: str) -> float | None:
+def read_memory_percent() -> float | None:
+    memory_percent = read_memory_stats()["memory_percent"]
+    return float(memory_percent) if memory_percent is not None else None
+
+
+def read_disk_stats(disk_path: str) -> dict[str, int | float] | None:
     try:
         usage = os.statvfs(disk_path)
     except OSError:
@@ -374,7 +450,18 @@ def read_disk_percent(disk_path: str) -> float | None:
     available_blocks = usage.f_bavail
     if total_blocks <= 0:
         return None
-    return ((total_blocks - available_blocks) / total_blocks) * 100
+    total_bytes = total_blocks * usage.f_frsize
+    used_bytes = (total_blocks - available_blocks) * usage.f_frsize
+    return {
+        "percent": (used_bytes / total_bytes) * 100,
+        "total_bytes": total_bytes,
+        "used_bytes": used_bytes,
+    }
+
+
+def read_disk_percent(disk_path: str) -> float | None:
+    disk_stats = read_disk_stats(disk_path)
+    return float(disk_stats["percent"]) if disk_stats else None
 
 
 def read_temperature_celsius() -> float | None:
@@ -624,9 +711,11 @@ def collect_metrics_snapshot(config: dict[str, Any], processes: list[ProcessInfo
         load_1m = None
         load_per_cpu = None
 
+    memory_stats = read_memory_stats()
     disk_paths = config.get("disk", {}).get("paths", ["/"])
-    disk_percents = [read_disk_percent(str(disk_path)) for disk_path in disk_paths]
-    readable_disk_percents = [percent for percent in disk_percents if percent is not None]
+    disk_stats = [read_disk_stats(str(disk_path)) for disk_path in disk_paths]
+    readable_disk_stats = [stats for stats in disk_stats if stats is not None]
+    max_disk_stats = max(readable_disk_stats, key=lambda stats: float(stats["percent"])) if readable_disk_stats else None
 
     return MetricsSnapshot(
         timestamp=now,
@@ -634,8 +723,14 @@ def collect_metrics_snapshot(config: dict[str, Any], processes: list[ProcessInfo
         load_per_cpu=load_per_cpu,
         cpu_count=cpu_count,
         temperature_celsius=read_temperature_celsius(),
-        memory_percent=read_memory_percent(),
-        max_disk_percent=max(readable_disk_percents) if readable_disk_percents else None,
+        memory_percent=float(memory_stats["memory_percent"]) if memory_stats["memory_percent"] is not None else None,
+        max_disk_percent=float(max_disk_stats["percent"]) if max_disk_stats else None,
+        memory_total_bytes=int(memory_stats["memory_total_bytes"]) if memory_stats["memory_total_bytes"] is not None else None,
+        memory_used_bytes=int(memory_stats["memory_used_bytes"]) if memory_stats["memory_used_bytes"] is not None else None,
+        swap_total_bytes=int(memory_stats["swap_total_bytes"]) if memory_stats["swap_total_bytes"] is not None else None,
+        swap_used_bytes=int(memory_stats["swap_used_bytes"]) if memory_stats["swap_used_bytes"] is not None else None,
+        disk_total_bytes=int(max_disk_stats["total_bytes"]) if max_disk_stats else None,
+        disk_used_bytes=int(max_disk_stats["used_bytes"]) if max_disk_stats else None,
         process_count=len(processes),
         watched_process_count=count_watched_processes(processes, config.get("processes", [])),
     )

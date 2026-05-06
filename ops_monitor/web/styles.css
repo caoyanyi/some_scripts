@@ -261,9 +261,25 @@ button {
 
 .metric-head span,
 .metric-meta,
+.metric-submeta,
 .panel-head span {
   color: var(--muted);
   font-size: 13px;
+}
+
+.metric-meta,
+.metric-submeta {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-submeta {
+  margin-top: 3px;
+  color: #7b8790;
+  font-size: 12px;
 }
 
 .metric-meter {

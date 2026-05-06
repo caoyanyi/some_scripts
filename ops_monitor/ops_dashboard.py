@@ -71,10 +71,28 @@ def ensure_dashboard_db(db_path: Path) -> None:
                 temperature_celsius REAL,
                 memory_percent REAL,
                 max_disk_percent REAL,
+                memory_total_bytes INTEGER,
+                memory_used_bytes INTEGER,
+                swap_total_bytes INTEGER,
+                swap_used_bytes INTEGER,
+                disk_total_bytes INTEGER,
+                disk_used_bytes INTEGER,
                 process_count INTEGER NOT NULL,
                 watched_process_count INTEGER NOT NULL
             )
             """
+        )
+        ensure_columns(
+            connection,
+            "metric_samples",
+            {
+                "memory_total_bytes": "INTEGER",
+                "memory_used_bytes": "INTEGER",
+                "swap_total_bytes": "INTEGER",
+                "swap_used_bytes": "INTEGER",
+                "disk_total_bytes": "INTEGER",
+                "disk_used_bytes": "INTEGER",
+            },
         )
         connection.execute(
             """
@@ -105,6 +123,15 @@ def ensure_dashboard_db(db_path: Path) -> None:
             )
             """
         )
+
+
+def ensure_columns(connection: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+    if table != "metric_samples":
+        raise ValueError(f"unexpected table for schema migration: {table}")
+    existing_columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+    for column_name, column_type in columns.items():
+        if column_name not in existing_columns:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column_name} {column_type}")
 
 
 def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:

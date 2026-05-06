@@ -27,8 +27,11 @@ const nodes = {
   temperatureValue: document.querySelector("#temperatureValue"),
   temperatureMeter: document.querySelector("#temperatureMeter"),
   memoryValue: document.querySelector("#memoryValue"),
+  memoryMeta: document.querySelector("#memoryMeta"),
+  swapMeta: document.querySelector("#swapMeta"),
   memoryMeter: document.querySelector("#memoryMeter"),
   diskValue: document.querySelector("#diskValue"),
+  diskMeta: document.querySelector("#diskMeta"),
   diskMeter: document.querySelector("#diskMeter"),
   sampleCount: document.querySelector("#sampleCount"),
   activeFindings: document.querySelector("#activeFindings"),
@@ -108,6 +111,20 @@ function formatRss(rssKb) {
   return `${(value / 1024).toFixed(1)} MB`;
 }
 
+function formatBytes(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value)) return "--";
+  const gib = value / 1024 / 1024 / 1024;
+  if (gib >= 1) return `${gib.toFixed(gib >= 10 ? 0 : 1)} GB`;
+  const mib = value / 1024 / 1024;
+  return `${mib.toFixed(mib >= 10 ? 0 : 1)} MB`;
+}
+
+function formatUsage(usedBytes, totalBytes) {
+  if (usedBytes === null || usedBytes === undefined || totalBytes === null || totalBytes === undefined) return "--";
+  return `${formatBytes(usedBytes)} / ${formatBytes(totalBytes)}`;
+}
+
 async function getJson(url) {
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) throw new Error(`请求失败，状态码 ${response.status}`);
@@ -175,11 +192,20 @@ function renderSummary() {
     : `1分钟负载 ${formatNumber(latest.load_1m, 2)} / ${latest.cpu_count || "--"} 核`;
   nodes.temperatureValue.textContent = formatNumber(latest.temperature_celsius, 1, "C");
   nodes.memoryValue.textContent = formatNumber(latest.memory_percent, 1, "%");
+  nodes.memoryMeta.textContent = formatUsage(latest.memory_used_bytes, latest.memory_total_bytes);
+  nodes.swapMeta.textContent = swapUsageLabel(latest);
   nodes.diskValue.textContent = formatNumber(latest.max_disk_percent, 1, "%");
+  nodes.diskMeta.textContent = formatUsage(latest.disk_used_bytes, latest.disk_total_bytes);
   setMeter(nodes.loadMeter, (Number(latest.load_per_cpu) / 2.5) * 100);
   setMeter(nodes.temperatureMeter, Number(latest.temperature_celsius));
   setMeter(nodes.memoryMeter, Number(latest.memory_percent));
   setMeter(nodes.diskMeter, Number(latest.max_disk_percent));
+}
+
+function swapUsageLabel(latest) {
+  const totalBytes = Number(latest.swap_total_bytes);
+  if (!Number.isFinite(totalBytes) || totalBytes <= 0) return "Swap 未配置";
+  return `Swap ${formatUsage(latest.swap_used_bytes, latest.swap_total_bytes)}`;
 }
 
 function setMeter(node, value) {
