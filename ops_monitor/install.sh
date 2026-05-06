@@ -2,10 +2,15 @@
 set -euo pipefail
 
 SERVICE_DIR="/etc/systemd/system"
-CONFIG_DIR="/etc/dmd"
-CONFIG_FILE="${CONFIG_DIR}/ops-monitor.json"
-MONITOR_SERVICE="dmd-ops-monitor.service"
-DASHBOARD_SERVICE="dmd-ops-dashboard.service"
+CONFIG_DIR="/etc/ops-monitor"
+CONFIG_FILE="${CONFIG_DIR}/config.json"
+DATA_DIR="/var/lib/ops-monitor"
+LOG_DIR="/var/log/ops-monitor"
+LEGACY_CONFIG_FILE="/etc/dmd/ops-monitor.json"
+MONITOR_SERVICE="ops-monitor.service"
+DASHBOARD_SERVICE="ops-monitor-dashboard.service"
+LEGACY_MONITOR_SERVICE="dmd-ops-monitor.service"
+LEGACY_DASHBOARD_SERVICE="dmd-ops-dashboard.service"
 DASHBOARD_HOST="0.0.0.0"
 DASHBOARD_PORT="8765"
 ACTION="install"
@@ -26,7 +31,7 @@ Options:
   --local-only         Bind dashboard to 127.0.0.1
   --lan                Bind dashboard to 0.0.0.0 for LAN access (default)
   --port PORT          Dashboard bind port (default: 8765)
-  --config FILE        Config path (default: /etc/dmd/ops-monitor.json)
+  --config FILE        Config path (default: /etc/ops-monitor/config.json)
   -h, --help           Show this help
 USAGE
 }
@@ -86,14 +91,77 @@ validate_files() {
 }
 
 write_config_if_missing() {
-    install -d "$CONFIG_DIR"
+    install -d -m 755 "$CONFIG_DIR" "$DATA_DIR" "$LOG_DIR"
     if [[ -f "$CONFIG_FILE" ]]; then
         log "Keeping existing config: $CONFIG_FILE"
+        normalize_config_paths "$CONFIG_FILE"
+        return
+    fi
+
+    if [[ -f "$LEGACY_CONFIG_FILE" ]]; then
+        install -m 600 "$LEGACY_CONFIG_FILE" "$CONFIG_FILE"
+        normalize_config_paths "$CONFIG_FILE"
+        log "Migrated config: $LEGACY_CONFIG_FILE -> $CONFIG_FILE"
         return
     fi
 
     install -m 600 "$CONFIG_EXAMPLE" "$CONFIG_FILE"
     log "Created config: $CONFIG_FILE"
+}
+
+normalize_config_paths() {
+    local target_config="$1"
+    python3 - "$target_config" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+data = json.loads(path.read_text(encoding="utf-8"))
+replacements = {
+    "ops_monitor/ops-monitor.log": "/var/log/ops-monitor/monitor.log",
+    "ops_monitor/ops-monitor.state.json": "/var/lib/ops-monitor/state.json",
+    "ops_monitor/ops-monitor.db": "/var/lib/ops-monitor/history.db",
+}
+for key in ("log_file", "state_file", "history_db"):
+    if data.get(key) in replacements:
+        data[key] = replacements[data[key]]
+
+email = data.get("alerts", {}).get("email", {})
+if email.get("password_env") == "DMD_OPS_MONITOR_SMTP_PASSWORD":
+    email["password_env"] = "OPS_MONITOR_SMTP_PASSWORD"
+
+path.write_text(json.dumps(data, ensure_ascii=False, indent=4) + "\n", encoding="utf-8")
+PY
+}
+
+migrate_legacy_runtime_files() {
+    local legacy_db="${PROJECT_DIR}/ops_monitor/ops-monitor.db"
+    local legacy_state="${PROJECT_DIR}/ops_monitor/ops-monitor.state.json"
+    local legacy_log="${PROJECT_DIR}/ops_monitor/ops-monitor.log"
+
+    if [[ -f "$legacy_db" && ! -f "${DATA_DIR}/history.db" ]]; then
+        install -m 600 "$legacy_db" "${DATA_DIR}/history.db"
+        log "Migrated history database to ${DATA_DIR}/history.db"
+    fi
+    if [[ -f "$legacy_state" && ! -f "${DATA_DIR}/state.json" ]]; then
+        install -m 600 "$legacy_state" "${DATA_DIR}/state.json"
+        log "Migrated state file to ${DATA_DIR}/state.json"
+    fi
+    if [[ -f "$legacy_log" && ! -f "${LOG_DIR}/monitor.log" ]]; then
+        install -m 640 "$legacy_log" "${LOG_DIR}/monitor.log"
+        log "Migrated log file to ${LOG_DIR}/monitor.log"
+    fi
+    chmod 600 "${DATA_DIR}/history.db" "${DATA_DIR}/state.json" 2>/dev/null || true
+    chmod 640 "${LOG_DIR}/monitor.log" 2>/dev/null || true
+}
+
+remove_legacy_services() {
+    systemctl stop "$LEGACY_DASHBOARD_SERVICE" "$LEGACY_MONITOR_SERVICE" >/dev/null 2>&1 || true
+    systemctl disable "$LEGACY_DASHBOARD_SERVICE" "$LEGACY_MONITOR_SERVICE" >/dev/null 2>&1 || true
+    rm -f "${SERVICE_DIR}/${LEGACY_DASHBOARD_SERVICE}" "${SERVICE_DIR}/${LEGACY_MONITOR_SERVICE}"
+    rm -f "$LEGACY_CONFIG_FILE"
+    rmdir "$(dirname "$LEGACY_CONFIG_FILE")" >/dev/null 2>&1 || true
 }
 
 write_services() {
@@ -105,7 +173,7 @@ write_services() {
 
     cat > "${SERVICE_DIR}/${MONITOR_SERVICE}" <<EOF_SERVICE
 [Unit]
-Description=DMD system operations monitor
+Description=System operations monitor
 After=network-online.target
 Wants=network-online.target
 
@@ -124,7 +192,7 @@ EOF_SERVICE
 
     cat > "${SERVICE_DIR}/${DASHBOARD_SERVICE}" <<EOF_SERVICE
 [Unit]
-Description=DMD ops monitor dashboard
+Description=Ops monitor dashboard
 After=network-online.target ${MONITOR_SERVICE}
 Wants=network-online.target
 
@@ -150,6 +218,8 @@ install_services() {
     require_root_for_write "$@"
     validate_files
     write_config_if_missing
+    migrate_legacy_runtime_files
+    remove_legacy_services
     write_services
     systemctl daemon-reload
     systemctl enable "$MONITOR_SERVICE" "$DASHBOARD_SERVICE"
@@ -167,21 +237,23 @@ install_services() {
 
 stop_services() {
     require_root_for_write "$@"
-    systemctl stop "$DASHBOARD_SERVICE" "$MONITOR_SERVICE" || true
+    systemctl stop "$DASHBOARD_SERVICE" "$MONITOR_SERVICE" "$LEGACY_DASHBOARD_SERVICE" "$LEGACY_MONITOR_SERVICE" || true
     log "Services stopped"
 }
 
 uninstall_services() {
     require_root_for_write "$@"
-    systemctl stop "$DASHBOARD_SERVICE" "$MONITOR_SERVICE" || true
-    systemctl disable "$DASHBOARD_SERVICE" "$MONITOR_SERVICE" || true
+    systemctl stop "$DASHBOARD_SERVICE" "$MONITOR_SERVICE" "$LEGACY_DASHBOARD_SERVICE" "$LEGACY_MONITOR_SERVICE" || true
+    systemctl disable "$DASHBOARD_SERVICE" "$MONITOR_SERVICE" "$LEGACY_DASHBOARD_SERVICE" "$LEGACY_MONITOR_SERVICE" || true
     rm -f "${SERVICE_DIR}/${DASHBOARD_SERVICE}" "${SERVICE_DIR}/${MONITOR_SERVICE}"
+    rm -f "${SERVICE_DIR}/${LEGACY_DASHBOARD_SERVICE}" "${SERVICE_DIR}/${LEGACY_MONITOR_SERVICE}"
     systemctl daemon-reload
     log "Service files removed. Config was preserved: $CONFIG_FILE"
 }
 
 show_status() {
     systemctl status "$MONITOR_SERVICE" "$DASHBOARD_SERVICE" --no-pager || true
+    systemctl status "$LEGACY_MONITOR_SERVICE" "$LEGACY_DASHBOARD_SERVICE" --no-pager || true
 }
 
 parse_args() {

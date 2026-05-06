@@ -53,7 +53,7 @@ python3 ops_monitor/ops_dashboard.py -c ops_monitor/config.json --host 127.0.0.1
       "smtp_port": 465,
       "security": "ssl",
       "username": "ops@example.com",
-      "password_env": "DMD_OPS_MONITOR_SMTP_PASSWORD",
+      "password_env": "OPS_MONITOR_SMTP_PASSWORD",
       "from": "ops@example.com",
       "to": ["admin@example.com"]
     }
@@ -81,7 +81,7 @@ python3 ops_monitor/ops_dashboard.py -c ops_monitor/config.json --host 127.0.0.1
 
 历史数据配置：
 
-- `history_db`: SQLite 历史库路径，默认 `ops_monitor/ops-monitor.db`。
+- `history_db`: SQLite 历史库路径，默认 `/var/lib/ops-monitor/history.db`。
 - `history_retention_days`: 历史保留天数，默认 30 天。
 - `finding_dedup_seconds`: 相邻重复预警的写入去重窗口，默认 600 秒。
 
@@ -112,17 +112,27 @@ sudo bash ops_monitor/install.sh --local-only --port 8765
 sudo bash ops_monitor/install.sh --lan --port 8765
 ```
 
+安装脚本默认会使用这些通用路径：
+
+- 配置文件：`/etc/ops-monitor/config.json`
+- 历史数据库：`/var/lib/ops-monitor/history.db`
+- 状态文件：`/var/lib/ops-monitor/state.json`
+- 日志文件：`/var/log/ops-monitor/monitor.log`
+- systemd 服务：`ops-monitor.service`、`ops-monitor-dashboard.service`
+
+如果旧版本已经安装过 `dmd-ops-monitor.service` 或 `/etc/dmd/ops-monitor.json`，重新执行安装脚本会自动迁移配置并停用旧服务。
+
 也可以手动部署，但需要先把 service 模板里的 `__PROJECT_DIR__` 替换成实际项目路径：
 
 ```bash
-sudo install -d /etc/dmd
-sudo cp ops_monitor/config.example.json /etc/dmd/ops-monitor.json
-sudo sed "s#__PROJECT_DIR__#$(pwd)#g" ops_monitor/systemd/dmd-ops-monitor.service | sudo tee /etc/systemd/system/dmd-ops-monitor.service >/dev/null
-sudo sed "s#__PROJECT_DIR__#$(pwd)#g" ops_monitor/systemd/dmd-ops-dashboard.service | sudo tee /etc/systemd/system/dmd-ops-dashboard.service >/dev/null
+sudo install -d /etc/ops-monitor /var/lib/ops-monitor /var/log/ops-monitor
+sudo cp ops_monitor/config.example.json /etc/ops-monitor/config.json
+sudo sed "s#__PROJECT_DIR__#$(pwd)#g" ops_monitor/systemd/ops-monitor.service | sudo tee /etc/systemd/system/ops-monitor.service >/dev/null
+sudo sed "s#__PROJECT_DIR__#$(pwd)#g" ops_monitor/systemd/ops-monitor-dashboard.service | sudo tee /etc/systemd/system/ops-monitor-dashboard.service >/dev/null
 sudo systemctl daemon-reload
-sudo systemctl enable --now dmd-ops-monitor.service
-sudo systemctl enable --now dmd-ops-dashboard.service
-sudo journalctl -u dmd-ops-monitor.service -f
+sudo systemctl enable --now ops-monitor.service
+sudo systemctl enable --now ops-monitor-dashboard.service
+sudo journalctl -u ops-monitor.service -f
 ```
 
 仪表盘 service 默认监听 `0.0.0.0:8765`，允许局域网设备通过服务器局域网 IP 访问。需要只允许本机访问时，使用 `--local-only` 或 `--host 127.0.0.1`。公网或跨网段访问建议通过 Nginx、SSH tunnel 或内网 VPN 暴露，并在外层增加访问控制。

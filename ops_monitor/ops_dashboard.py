@@ -41,15 +41,15 @@ DIAGNOSTIC_ACTIONS: dict[str, dict[str, Any]] = {
     },
     "services": {
         "label": "监控服务状态",
-        "command": ["systemctl", "status", "dmd-ops-monitor.service", "dmd-ops-dashboard.service", "--no-pager"],
+        "command": ["systemctl", "status", "ops-monitor.service", "ops-monitor-dashboard.service", "--no-pager"],
     },
     "monitor_log": {
         "label": "监控日志",
-        "command": ["journalctl", "-u", "dmd-ops-monitor.service", "-n", "80", "--no-pager"],
+        "command": ["journalctl", "-u", "ops-monitor.service", "-n", "80", "--no-pager"],
     },
     "dashboard_log": {
         "label": "仪表盘日志",
-        "command": ["journalctl", "-u", "dmd-ops-dashboard.service", "-n", "80", "--no-pager"],
+        "command": ["journalctl", "-u", "ops-monitor-dashboard.service", "-n", "80", "--no-pager"],
     },
     "processes": {
         "label": "进程快照",
@@ -504,7 +504,7 @@ def main() -> int:
     args = parse_args()
     config_path = Path(args.config)
     config = load_config(config_path) if config_path.exists() else DEFAULT_CONFIG
-    db_path = Path(args.db or config.get("history_db", "ops_monitor/ops-monitor.db"))
+    db_path = Path(args.db or config.get("history_db", "/var/lib/ops-monitor/history.db"))
 
     DashboardHandler.db_path = db_path
     server = ThreadingHTTPServer((args.host, args.port), DashboardHandler)

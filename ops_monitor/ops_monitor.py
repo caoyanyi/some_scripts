@@ -24,9 +24,9 @@ from typing import Any
 DEFAULT_CONFIG: dict[str, Any] = {
     "interval_seconds": 15,
     "dry_run": True,
-    "log_file": "ops_monitor/ops-monitor.log",
-    "state_file": "ops_monitor/ops-monitor.state.json",
-    "history_db": "ops_monitor/ops-monitor.db",
+    "log_file": "/var/log/ops-monitor/monitor.log",
+    "state_file": "/var/lib/ops-monitor/state.json",
+    "history_db": "/var/lib/ops-monitor/history.db",
     "history_retention_days": 30,
     "finding_dedup_seconds": 600,
     "alerts": {
@@ -885,7 +885,7 @@ def main(argv: list[str] | None = None) -> int:
         config["dry_run"] = False
 
     setup_logging(config.get("log_file"), args.verbose)
-    state_path = Path(config.get("state_file", "ops_monitor/ops-monitor.state.json"))
+    state_path = Path(config.get("state_file", "/var/lib/ops-monitor/state.json"))
     state = load_state(state_path)
 
     LOG.info("starting ops monitor: dry_run=%s once=%s", config.get("dry_run", True), args.once)
