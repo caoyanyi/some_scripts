@@ -1,0 +1,249 @@
+const state = {
+  summary: null,
+  history: [],
+  findings: [],
+};
+
+const nodes = {
+  rangeSelect: document.querySelector("#rangeSelect"),
+  refreshButton: document.querySelector("#refreshButton"),
+  statusBand: document.querySelector("#statusBand"),
+  statusDot: document.querySelector("#statusDot"),
+  statusText: document.querySelector("#statusText"),
+  lastSample: document.querySelector("#lastSample"),
+  findingCount: document.querySelector("#findingCount"),
+  loadValue: document.querySelector("#loadValue"),
+  loadMeta: document.querySelector("#loadMeta"),
+  temperatureValue: document.querySelector("#temperatureValue"),
+  memoryValue: document.querySelector("#memoryValue"),
+  diskValue: document.querySelector("#diskValue"),
+  sampleCount: document.querySelector("#sampleCount"),
+  activeFindings: document.querySelector("#activeFindings"),
+  findingsTable: document.querySelector("#findingsTable"),
+  historyFindingCount: document.querySelector("#historyFindingCount"),
+  chart: document.querySelector("#historyChart"),
+};
+
+function formatTime(timestamp) {
+  if (!timestamp) return "--";
+  return new Date(timestamp * 1000).toLocaleString("zh-CN", {
+    hour12: false,
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatNumber(value, digits = 1, suffix = "") {
+  if (value === null || value === undefined) return "--";
+  return `${Number(value).toFixed(digits)}${suffix}`;
+}
+
+function statusLabel(status) {
+  return {
+    OK: "健康",
+    WARN: "预警",
+    CRITICAL: "严重异常",
+    NO_DATA: "暂无数据",
+  }[status] || status;
+}
+
+function statusColor(status) {
+  return {
+    OK: "var(--ok)",
+    WARN: "var(--warn)",
+    CRITICAL: "var(--critical)",
+    NO_DATA: "var(--muted)",
+  }[status] || "var(--muted)";
+}
+
+async function getJson(url) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+async function loadData() {
+  const hours = nodes.rangeSelect.value;
+  const [summary, history, findings] = await Promise.all([
+    getJson("/api/summary"),
+    getJson(`/api/history?hours=${hours}&limit=2000`),
+    getJson(`/api/findings?hours=${hours}&limit=300`),
+  ]);
+
+  state.summary = summary;
+  state.history = history.samples || [];
+  state.findings = findings.findings || [];
+  render();
+}
+
+function render() {
+  renderSummary();
+  renderChart();
+  renderActiveFindings();
+  renderFindingsTable();
+}
+
+function renderSummary() {
+  const summary = state.summary || {};
+  const latest = summary.latest || {};
+  const status = summary.status || "NO_DATA";
+  const last24h = summary.last_24h || {};
+
+  nodes.statusDot.style.background = statusColor(status);
+  nodes.statusText.textContent = statusLabel(status);
+  nodes.lastSample.textContent = formatTime(latest.timestamp);
+  nodes.findingCount.textContent = `${last24h.total || 0}`;
+  nodes.loadValue.textContent = formatNumber(latest.load_per_cpu, 2);
+  nodes.loadMeta.textContent = latest.load_1m === null || latest.load_1m === undefined
+    ? "--"
+    : `1m load ${formatNumber(latest.load_1m, 2)} / ${latest.cpu_count || "--"} CPU`;
+  nodes.temperatureValue.textContent = formatNumber(latest.temperature_celsius, 1, "C");
+  nodes.memoryValue.textContent = formatNumber(latest.memory_percent, 1, "%");
+  nodes.diskValue.textContent = formatNumber(latest.max_disk_percent, 1, "%");
+}
+
+function chartSeries() {
+  return [
+    { key: "load_per_cpu", color: "#22577a", scale: 40 },
+    { key: "temperature_celsius", color: "#c2410c", scale: 100 },
+    { key: "memory_percent", color: "#2f855a", scale: 100 },
+    { key: "max_disk_percent", color: "#6d5bd0", scale: 100 },
+  ];
+}
+
+function renderChart() {
+  const canvas = nodes.chart;
+  const context = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+  canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const width = rect.width;
+  const height = rect.height;
+  const padding = { top: 18, right: 18, bottom: 28, left: 42 };
+  context.clearRect(0, 0, width, height);
+
+  context.strokeStyle = "#d9dfd2";
+  context.lineWidth = 1;
+  context.font = "12px system-ui";
+  context.fillStyle = "#687268";
+
+  for (let step = 0; step <= 4; step += 1) {
+    const y = padding.top + ((height - padding.top - padding.bottom) * step) / 4;
+    context.beginPath();
+    context.moveTo(padding.left, y);
+    context.lineTo(width - padding.right, y);
+    context.stroke();
+    context.fillText(`${100 - step * 25}%`, 8, y + 4);
+  }
+
+  nodes.sampleCount.textContent = `${state.history.length} samples`;
+  if (state.history.length < 2) {
+    context.fillText("暂无足够历史数据", padding.left, height / 2);
+    return;
+  }
+
+  const firstTs = state.history[0].timestamp;
+  const lastTs = state.history[state.history.length - 1].timestamp;
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+
+  for (const series of chartSeries()) {
+    context.strokeStyle = series.color;
+    context.lineWidth = 2;
+    context.beginPath();
+    let started = false;
+
+    for (const sample of state.history) {
+      const value = sample[series.key];
+      if (value === null || value === undefined) {
+        started = false;
+        continue;
+      }
+      const x = padding.left + ((sample.timestamp - firstTs) / Math.max(1, lastTs - firstTs)) * plotWidth;
+      const normalized = Math.max(0, Math.min(1, Number(value) / series.scale));
+      const y = padding.top + (1 - normalized) * plotHeight;
+      if (!started) {
+        context.moveTo(x, y);
+        started = true;
+      } else {
+        context.lineTo(x, y);
+      }
+    }
+    context.stroke();
+  }
+
+  context.fillStyle = "#687268";
+  context.fillText(formatTime(firstTs), padding.left, height - 8);
+  const endLabel = formatTime(lastTs);
+  context.fillText(endLabel, Math.max(padding.left, width - padding.right - context.measureText(endLabel).width), height - 8);
+}
+
+function findingMarkup(finding) {
+  const severityClass = String(finding.severity || "").toLowerCase();
+  return `
+    <div class="finding-item ${severityClass}">
+      <strong>${finding.severity} · ${finding.finding_key}</strong>
+      <p>${formatTime(finding.timestamp)} · ${escapeHtml(finding.message)}</p>
+    </div>
+  `;
+}
+
+function renderActiveFindings() {
+  const findings = state.summary?.active_findings || [];
+  nodes.activeFindings.innerHTML = findings.length
+    ? findings.slice(0, 8).map(findingMarkup).join("")
+    : '<p class="empty">当前没有活跃异常。</p>';
+}
+
+function renderFindingsTable() {
+  nodes.historyFindingCount.textContent = `${state.findings.length} 条`;
+  nodes.findingsTable.innerHTML = state.findings.length
+    ? state.findings.map((finding) => `
+      <tr>
+        <td>${formatTime(finding.timestamp)}</td>
+        <td><span class="badge ${String(finding.severity).toLowerCase()}">${finding.severity}</span></td>
+        <td>${escapeHtml(finding.finding_key)}</td>
+        <td>${escapeHtml(finding.message)}</td>
+      </tr>
+    `).join("")
+    : '<tr><td colspan="4" class="empty">所选时间范围内没有异常记录。</td></tr>';
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+nodes.refreshButton.addEventListener("click", () => {
+  loadData().catch((error) => {
+    nodes.statusText.textContent = `加载失败: ${error.message}`;
+    nodes.statusDot.style.background = "var(--critical)";
+  });
+});
+
+nodes.rangeSelect.addEventListener("change", () => {
+  loadData().catch((error) => {
+    nodes.statusText.textContent = `加载失败: ${error.message}`;
+    nodes.statusDot.style.background = "var(--critical)";
+  });
+});
+
+window.addEventListener("resize", () => renderChart());
+
+loadData().catch((error) => {
+  nodes.statusText.textContent = `加载失败: ${error.message}`;
+  nodes.statusDot.style.background = "var(--critical)";
+});
+
+setInterval(() => {
+  loadData().catch(() => undefined);
+}, 30000);

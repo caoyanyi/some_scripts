@@ -1,0 +1,16 @@
+[Unit]
+Description=DMD system operations monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__PROJECT_DIR__
+ExecStart=/usr/bin/env python3 __PROJECT_DIR__/ops_monitor/ops_monitor.py -c /etc/dmd/ops-monitor.json
+Restart=always
+RestartSec=10
+User=root
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

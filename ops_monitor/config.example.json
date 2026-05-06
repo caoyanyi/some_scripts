@@ -1,0 +1,74 @@
+{
+    "interval_seconds": 60,
+    "dry_run": true,
+    "log_file": "ops_monitor/ops-monitor.log",
+    "state_file": "ops_monitor/ops-monitor.state.json",
+    "history_db": "ops_monitor/ops-monitor.db",
+    "history_retention_days": 30,
+    "alerts": {
+        "cooldown_seconds": 300,
+        "webhook_url": "",
+        "email": {
+            "enabled": false,
+            "smtp_host": "127.0.0.1",
+            "smtp_port": 25,
+            "security": "none",
+            "smtp_timeout_seconds": 15,
+            "username": "",
+            "password": "",
+            "password_env": "DMD_OPS_MONITOR_SMTP_PASSWORD",
+            "from": "ops-monitor@example.com",
+            "to": [
+                "admin@example.com"
+            ]
+        }
+    },
+    "load": {
+        "enabled": true,
+        "warn_1m_per_cpu": 1.5,
+        "critical_1m_per_cpu": 2.5
+    },
+    "temperature": {
+        "enabled": true,
+        "warn_celsius": 75,
+        "critical_celsius": 85
+    },
+    "disk": {
+        "enabled": true,
+        "warn_percent": 85,
+        "critical_percent": 95,
+        "paths": [
+            "/"
+        ]
+    },
+    "memory": {
+        "enabled": true,
+        "warn_percent": 85,
+        "critical_percent": 95
+    },
+    "processes": [
+        {
+            "name": "long-running export scripts",
+            "match": [
+                "export/index.php",
+                "export/local"
+            ],
+            "max_runtime_seconds": 21600,
+            "max_cpu_percent": 95,
+            "cpu_grace_seconds": 900,
+            "action": "alert"
+        },
+        {
+            "name": "stuck python migrations",
+            "match": [
+                "migrate_restore_assets",
+                "updateMailing.py"
+            ],
+            "max_runtime_seconds": 14400,
+            "max_cpu_percent": 90,
+            "cpu_grace_seconds": 900,
+            "action": "terminate",
+            "kill_after_seconds": 30
+        }
+    ]
+}

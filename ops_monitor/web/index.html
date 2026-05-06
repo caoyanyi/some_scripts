@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DMD Ops Dashboard</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">DMD Ops Monitor</p>
+          <h1>系统运行仪表盘</h1>
+        </div>
+        <div class="toolbar">
+          <select id="rangeSelect" aria-label="历史范围">
+            <option value="6">最近 6 小时</option>
+            <option value="24" selected>最近 24 小时</option>
+            <option value="168">最近 7 天</option>
+            <option value="720">最近 30 天</option>
+          </select>
+          <button id="refreshButton" type="button">刷新</button>
+        </div>
+      </header>
+
+      <section class="status-band" id="statusBand">
+        <div>
+          <span class="status-dot" id="statusDot"></span>
+          <p class="label">当前状态</p>
+          <strong id="statusText">加载中</strong>
+        </div>
+        <div>
+          <p class="label">最近采样</p>
+          <strong id="lastSample">--</strong>
+        </div>
+        <div>
+          <p class="label">24小时异常</p>
+          <strong id="findingCount">--</strong>
+        </div>
+      </section>
+
+      <section class="metric-grid" aria-label="关键指标">
+        <article class="metric-card">
+          <p class="label">负载 / CPU</p>
+          <strong id="loadValue">--</strong>
+          <span id="loadMeta">--</span>
+        </article>
+        <article class="metric-card">
+          <p class="label">温度</p>
+          <strong id="temperatureValue">--</strong>
+          <span>最高传感器读数</span>
+        </article>
+        <article class="metric-card">
+          <p class="label">内存</p>
+          <strong id="memoryValue">--</strong>
+          <span>MemAvailable 估算</span>
+        </article>
+        <article class="metric-card">
+          <p class="label">磁盘</p>
+          <strong id="diskValue">--</strong>
+          <span>配置路径最大值</span>
+        </article>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel trend-panel">
+          <div class="panel-head">
+            <div>
+              <p class="label">历史趋势</p>
+              <h2>资源走势</h2>
+            </div>
+            <span id="sampleCount">-- samples</span>
+          </div>
+          <canvas id="historyChart" width="900" height="320"></canvas>
+          <div class="legend">
+            <span><i class="line load"></i>负载/CPU</span>
+            <span><i class="line temp"></i>温度</span>
+            <span><i class="line memory"></i>内存</span>
+            <span><i class="line disk"></i>磁盘</span>
+          </div>
+        </article>
+
+        <aside class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="label">当前异常</p>
+              <h2>需要处理</h2>
+            </div>
+          </div>
+          <div id="activeFindings" class="finding-list"></div>
+        </aside>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="label">历史异常</p>
+            <h2>异常记录</h2>
+          </div>
+          <span id="historyFindingCount">--</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>级别</th>
+                <th>类型</th>
+                <th>详情</th>
+              </tr>
+            </thead>
+            <tbody id="findingsTable"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

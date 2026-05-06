@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+config.json
+*.log
+*.db
+*.db-*
+*.state.json
+*.state.json.tmp
