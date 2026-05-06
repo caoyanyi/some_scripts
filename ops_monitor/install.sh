@@ -6,7 +6,7 @@ CONFIG_DIR="/etc/dmd"
 CONFIG_FILE="${CONFIG_DIR}/ops-monitor.json"
 MONITOR_SERVICE="dmd-ops-monitor.service"
 DASHBOARD_SERVICE="dmd-ops-dashboard.service"
-DASHBOARD_HOST="127.0.0.1"
+DASHBOARD_HOST="0.0.0.0"
 DASHBOARD_PORT="8765"
 ACTION="install"
 START_SERVICES="yes"
@@ -22,8 +22,9 @@ Options:
   --stop               Stop both services
   --uninstall          Stop, disable, and remove both service files
   --status             Show systemd status for both services
-  --host HOST          Dashboard bind host (default: 127.0.0.1)
-  --lan                Bind dashboard to 0.0.0.0 for LAN access
+  --host HOST          Dashboard bind host (default: 0.0.0.0)
+  --local-only         Bind dashboard to 127.0.0.1
+  --lan                Bind dashboard to 0.0.0.0 for LAN access (default)
   --port PORT          Dashboard bind port (default: 8765)
   --config FILE        Config path (default: /etc/dmd/ops-monitor.json)
   -h, --help           Show this help
@@ -214,6 +215,9 @@ parse_args() {
                 ;;
             --lan)
                 DASHBOARD_HOST="0.0.0.0"
+                ;;
+            --local-only)
+                DASHBOARD_HOST="127.0.0.1"
                 ;;
             --port)
                 shift

@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=__PROJECT_DIR__
-ExecStart=/usr/bin/env python3 __PROJECT_DIR__/ops_monitor/ops_dashboard.py -c /etc/dmd/ops-monitor.json --host 127.0.0.1 --port 8765
+ExecStart=/usr/bin/env python3 __PROJECT_DIR__/ops_monitor/ops_dashboard.py -c /etc/dmd/ops-monitor.json --host 0.0.0.0 --port 8765
 Restart=always
 RestartSec=10
 User=root
