@@ -5,6 +5,7 @@
     "state_file": "ops_monitor/ops-monitor.state.json",
     "history_db": "ops_monitor/ops-monitor.db",
     "history_retention_days": 30,
+    "finding_dedup_seconds": 600,
     "alerts": {
         "cooldown_seconds": 300,
         "webhook_url": "",

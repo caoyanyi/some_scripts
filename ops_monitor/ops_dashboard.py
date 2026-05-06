@@ -134,6 +134,45 @@ def overall_status(latest: dict[str, Any] | None, active_findings: list[dict[str
     return "OK"
 
 
+def merge_finding_rows(rows: list[sqlite3.Row], merge_window_seconds: int) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    active_groups: dict[tuple[str, str], dict[str, Any]] = {}
+
+    for row in rows:
+        finding = localize_finding(row_to_dict(row))
+        group_key = (str(finding["severity"]), str(finding["finding_key"]))
+        group = active_groups.get(group_key)
+        if group and int(group["first_timestamp"]) - int(finding["timestamp"]) <= merge_window_seconds:
+            group["first_timestamp"] = finding["timestamp"]
+            group["repeat_count"] += 1
+            continue
+
+        group = {
+            **finding,
+            "last_timestamp": finding["timestamp"],
+            "first_timestamp": finding["timestamp"],
+            "repeat_count": 1,
+        }
+        active_groups[group_key] = group
+        merged.append(group)
+
+    return merged
+
+
+def paginate_items(items: list[dict[str, Any]], page: int, page_size: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    total = len(items)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    current_page = max(1, min(page, total_pages))
+    start = (current_page - 1) * page_size
+    end = start + page_size
+    return items[start:end], {
+        "page": current_page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": total_pages,
+    }
+
+
 def get_latest_process_samples(connection: sqlite3.Connection, rank_type: str, limit: int = 8) -> list[dict[str, Any]]:
     latest_row = connection.execute(
         "SELECT MAX(timestamp) AS timestamp FROM process_samples WHERE rank_type = ?",
@@ -174,20 +213,23 @@ def get_summary(db_path: Path, active_window_seconds: int = 3600) -> dict[str, A
             """,
             (now - active_window_seconds,),
         ).fetchall()
-        active_findings = [localize_finding(row_to_dict(row)) for row in active_rows]
+        active_findings = merge_finding_rows(active_rows, 600)
 
-        counts_row = connection.execute(
+        count_rows = connection.execute(
             """
-            SELECT
-                COUNT(*) AS total,
-                SUM(CASE WHEN severity = 'CRITICAL' THEN 1 ELSE 0 END) AS critical,
-                SUM(CASE WHEN severity = 'WARN' THEN 1 ELSE 0 END) AS warn
+            SELECT timestamp, severity, finding_key, message
             FROM findings
             WHERE timestamp >= ?
+            ORDER BY timestamp DESC
             """,
             (now - 86400,),
-        ).fetchone()
-        counts = row_to_dict(counts_row) if counts_row else {"total": 0, "critical": 0, "warn": 0}
+        ).fetchall()
+        merged_counts = merge_finding_rows(count_rows, 600)
+        counts = {
+            "total": len(merged_counts),
+            "critical": sum(1 for finding in merged_counts if finding["severity"] == "CRITICAL"),
+            "warn": sum(1 for finding in merged_counts if finding["severity"] == "WARN"),
+        }
         top_processes = {
             "cpu": get_latest_process_samples(connection, "cpu"),
             "memory": get_latest_process_samples(connection, "memory"),
@@ -222,7 +264,13 @@ def get_history(db_path: Path, since_seconds: int, limit: int) -> dict[str, Any]
     return {"generated_at": now, "since": since, "samples": [row_to_dict(row) for row in rows]}
 
 
-def get_findings(db_path: Path, since_seconds: int, limit: int) -> dict[str, Any]:
+def get_findings(
+    db_path: Path,
+    since_seconds: int,
+    limit: int,
+    page: int = 1,
+    merge_window_seconds: int = 600,
+) -> dict[str, Any]:
     now = int(time.time())
     since = now - since_seconds
     with connect(db_path) as connection:
@@ -232,13 +280,19 @@ def get_findings(db_path: Path, since_seconds: int, limit: int) -> dict[str, Any
             FROM findings
             WHERE timestamp >= ?
             ORDER BY timestamp DESC
-            LIMIT ?
             """,
-            (since, limit),
+            (since,),
         ).fetchall()
-    findings = [localize_finding(row_to_dict(row)) for row in rows]
-    findings.sort(key=lambda item: (item["timestamp"], severity_rank(item["severity"])), reverse=True)
-    return {"generated_at": now, "since": since, "findings": findings}
+    findings = merge_finding_rows(rows, merge_window_seconds)
+    findings.sort(key=lambda item: (item["last_timestamp"], severity_rank(item["severity"])), reverse=True)
+    paged_findings, pagination = paginate_items(findings, page, limit)
+    return {
+        "generated_at": now,
+        "since": since,
+        "findings": paged_findings,
+        "pagination": pagination,
+        "merge_window_seconds": merge_window_seconds,
+    }
 
 
 def parse_int(query: dict[str, list[str]], name: str, default: int, minimum: int, maximum: int) -> int:
@@ -279,8 +333,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 payload = get_history(self.db_path, hours * 3600, limit)
             elif path == "/api/findings":
                 hours = parse_int(query, "hours", 24, 1, 24 * 90)
-                limit = parse_int(query, "limit", 200, 1, 1000)
-                payload = get_findings(self.db_path, hours * 3600, limit)
+                limit = parse_int(query, "limit", 20, 1, 100)
+                page = parse_int(query, "page", 1, 1, 100000)
+                merge_window = parse_int(query, "merge_window", 600, 0, 86400)
+                payload = get_findings(self.db_path, hours * 3600, limit, page, merge_window)
             else:
                 self.send_json({"error": "接口不存在"}, HTTPStatus.NOT_FOUND)
                 return

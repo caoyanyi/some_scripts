@@ -28,6 +28,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "state_file": "ops_monitor/ops-monitor.state.json",
     "history_db": "ops_monitor/ops-monitor.db",
     "history_retention_days": 30,
+    "finding_dedup_seconds": 600,
     "alerts": {
         "cooldown_seconds": 300,
         "webhook_url": "",
@@ -256,6 +257,7 @@ def save_history_sample(
     snapshot: MetricsSnapshot,
     findings: list[Finding],
     processes: list[ProcessInfo] | None = None,
+    finding_dedup_seconds: int = 600,
 ) -> None:
     ensure_history_db(db_path)
     with sqlite3.connect(db_path) as connection:
@@ -285,12 +287,36 @@ def save_history_sample(
                 snapshot.watched_process_count,
             ),
         )
+        filtered_findings: list[Finding] = []
+        for finding in findings:
+            if finding_dedup_seconds > 0:
+                duplicate_row = connection.execute(
+                    """
+                    SELECT 1
+                    FROM findings
+                    WHERE timestamp >= ?
+                      AND timestamp <= ?
+                      AND severity = ?
+                      AND finding_key = ?
+                    LIMIT 1
+                    """,
+                    (
+                        snapshot.timestamp - finding_dedup_seconds,
+                        snapshot.timestamp,
+                        finding.severity,
+                        finding.key,
+                    ),
+                ).fetchone()
+                if duplicate_row:
+                    continue
+            filtered_findings.append(finding)
+
         connection.executemany(
             """
             INSERT INTO findings (timestamp, severity, finding_key, message)
             VALUES (?, ?, ?, ?)
             """,
-            [(snapshot.timestamp, finding.severity, finding.key, finding.message) for finding in findings],
+            [(snapshot.timestamp, finding.severity, finding.key, finding.message) for finding in filtered_findings],
         )
         if processes:
             connection.executemany(
@@ -722,7 +748,13 @@ def run_once(config: dict[str, Any], state: dict[str, Any]) -> int:
     if history_db:
         db_path = Path(history_db)
         snapshot = collect_metrics_snapshot(config, processes, now_int)
-        save_history_sample(db_path, snapshot, findings, processes)
+        save_history_sample(
+            db_path,
+            snapshot,
+            findings,
+            processes,
+            int(config.get("finding_dedup_seconds", 600)),
+        )
         prune_history(db_path, int(config.get("history_retention_days", 30)), now_int)
 
     for finding in findings:

@@ -10,6 +10,7 @@
 - 支持日志、告警冷却、Webhook 和 SMTP 邮件告警。
 - SMTP 邮件支持 `none`、`starttls`、`ssl`，并支持用户名/密码认证。
 - 每次巡检会写入 SQLite 历史库，可用内置仪表盘查看当前、近期和历史异常。
+- 异常记录支持分页展示，并会合并相邻时间内重复出现的同类预警。
 
 ## 快速运行
 
@@ -81,6 +82,7 @@ python3 ops_monitor/ops_dashboard.py -c ops_monitor/config.json --host 127.0.0.1
 
 - `history_db`: SQLite 历史库路径，默认 `ops_monitor/ops-monitor.db`。
 - `history_retention_days`: 历史保留天数，默认 30 天。
+- `finding_dedup_seconds`: 相邻重复预警的写入去重窗口，默认 600 秒。
 
 ## systemd 部署
 

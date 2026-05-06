@@ -2,6 +2,7 @@ const state = {
   summary: null,
   history: [],
   findings: [],
+  findingsPagination: { page: 1, page_size: 20, total: 0, total_pages: 1 },
   refreshTimer: null,
   countdownTimer: null,
   nextRefreshAt: null,
@@ -26,6 +27,9 @@ const nodes = {
   activeFindings: document.querySelector("#activeFindings"),
   findingsTable: document.querySelector("#findingsTable"),
   historyFindingCount: document.querySelector("#historyFindingCount"),
+  findingPageState: document.querySelector("#findingPageState"),
+  prevFindingPage: document.querySelector("#prevFindingPage"),
+  nextFindingPage: document.querySelector("#nextFindingPage"),
   topCpuList: document.querySelector("#topCpuList"),
   topMemoryList: document.querySelector("#topMemoryList"),
   topCpuTime: document.querySelector("#topCpuTime"),
@@ -100,15 +104,18 @@ async function getJson(url) {
 
 async function loadData() {
   const hours = nodes.rangeSelect.value;
+  const page = state.findingsPagination.page || 1;
+  const pageSize = state.findingsPagination.page_size || 20;
   const [summary, history, findings] = await Promise.all([
     getJson("/api/summary"),
     getJson(`/api/history?hours=${hours}&limit=2000`),
-    getJson(`/api/findings?hours=${hours}&limit=300`),
+    getJson(`/api/findings?hours=${hours}&limit=${pageSize}&page=${page}`),
   ]);
 
   state.summary = summary;
   state.history = history.samples || [];
   state.findings = findings.findings || [];
+  state.findingsPagination = findings.pagination || state.findingsPagination;
   render();
 }
 
@@ -220,10 +227,11 @@ function renderChart() {
 
 function findingMarkup(finding) {
   const severityClass = String(finding.severity || "").toLowerCase();
+  const repeatText = repeatLabel(finding);
   return `
     <div class="finding-item ${severityClass}">
       <strong>${severityLabel(finding.severity)} · ${finding.finding_key}</strong>
-      <p>${formatTime(finding.timestamp)} · ${escapeHtml(finding.message)}</p>
+      <p>${formatFindingTime(finding)}${repeatText} · ${escapeHtml(finding.message)}</p>
     </div>
   `;
 }
@@ -236,17 +244,39 @@ function renderActiveFindings() {
 }
 
 function renderFindingsTable() {
-  nodes.historyFindingCount.textContent = `${state.findings.length} 条`;
+  const pagination = state.findingsPagination || {};
+  const total = Number(pagination.total || state.findings.length || 0);
+  const page = Number(pagination.page || 1);
+  const totalPages = Number(pagination.total_pages || 1);
+
+  nodes.historyFindingCount.textContent = `合并后 ${total} 条`;
+  nodes.findingPageState.textContent = `${page} / ${totalPages}`;
+  nodes.prevFindingPage.disabled = page <= 1;
+  nodes.nextFindingPage.disabled = page >= totalPages;
   nodes.findingsTable.innerHTML = state.findings.length
     ? state.findings.map((finding) => `
       <tr>
-        <td>${formatTime(finding.timestamp)}</td>
+        <td>${formatFindingTime(finding)}${repeatLabel(finding)}</td>
         <td><span class="badge ${String(finding.severity).toLowerCase()}">${severityLabel(finding.severity)}</span></td>
         <td>${escapeHtml(finding.finding_key)}</td>
         <td>${escapeHtml(finding.message)}</td>
       </tr>
     `).join("")
     : '<tr><td colspan="4" class="empty">所选时间范围内没有异常记录。</td></tr>';
+}
+
+function formatFindingTime(finding) {
+  const firstTimestamp = finding.first_timestamp || finding.timestamp;
+  const lastTimestamp = finding.last_timestamp || finding.timestamp;
+  if (firstTimestamp && lastTimestamp && firstTimestamp !== lastTimestamp) {
+    return `${formatTime(firstTimestamp)} - ${formatTime(lastTimestamp)}`;
+  }
+  return formatTime(lastTimestamp || firstTimestamp);
+}
+
+function repeatLabel(finding) {
+  const repeatCount = Number(finding.repeat_count || 1);
+  return repeatCount > 1 ? ` · 重复 ${repeatCount} 次` : "";
 }
 
 function renderTopProcesses() {
@@ -327,6 +357,7 @@ nodes.refreshButton.addEventListener("click", () => {
 });
 
 nodes.rangeSelect.addEventListener("change", () => {
+  state.findingsPagination.page = 1;
   loadData().catch((error) => {
     nodes.statusText.textContent = `加载失败: ${error.message}`;
     nodes.statusDot.style.background = "var(--critical)";
@@ -336,6 +367,23 @@ nodes.rangeSelect.addEventListener("change", () => {
 
 nodes.refreshSelect.addEventListener("change", () => {
   setupAutoRefresh();
+});
+
+nodes.prevFindingPage.addEventListener("click", () => {
+  state.findingsPagination.page = Math.max(1, Number(state.findingsPagination.page || 1) - 1);
+  loadData().catch((error) => {
+    nodes.statusText.textContent = `加载失败: ${error.message}`;
+    nodes.statusDot.style.background = "var(--critical)";
+  });
+});
+
+nodes.nextFindingPage.addEventListener("click", () => {
+  const totalPages = Number(state.findingsPagination.total_pages || 1);
+  state.findingsPagination.page = Math.min(totalPages, Number(state.findingsPagination.page || 1) + 1);
+  loadData().catch((error) => {
+    nodes.statusText.textContent = `加载失败: ${error.message}`;
+    nodes.statusDot.style.background = "var(--critical)";
+  });
 });
 
 window.addEventListener("resize", () => renderChart());

@@ -103,7 +103,8 @@ button {
 }
 
 .control-label,
-.refresh-state {
+.refresh-state,
+.pager {
   color: var(--muted);
   font-size: 13px;
 }
@@ -195,6 +196,25 @@ button {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 14px;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pager button {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.pager button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .trend-panel canvas {
@@ -445,6 +465,15 @@ td:last-child {
   .toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .panel-head {
+    flex-direction: column;
+  }
+
+  .pager {
+    justify-content: flex-start;
+    width: 100%;
   }
 
   .process-row {
