@@ -156,6 +156,7 @@ button {
 
 .metric-card,
 .panel {
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -325,11 +326,18 @@ td:last-child {
 .process-list {
   display: grid;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .process-row {
-  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(132px, 180px);
+  align-items: stretch;
   gap: 12px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 10px;
@@ -338,7 +346,7 @@ td:last-child {
 
 .process-main {
   min-width: 0;
-  flex: 1;
+  max-width: 100%;
 }
 
 .process-main strong {
@@ -348,19 +356,25 @@ td:last-child {
 }
 
 .process-main code {
-  display: block;
+  display: -webkit-box;
   max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
   color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .process-stats {
   display: grid;
+  align-content: center;
   min-width: 132px;
+  max-width: 180px;
   gap: 4px;
   color: var(--muted);
   font-size: 12px;
@@ -434,11 +448,11 @@ td:last-child {
   }
 
   .process-row {
-    align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .process-stats {
+    max-width: none;
     width: 100%;
   }
 
