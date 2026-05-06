@@ -23,6 +23,7 @@ Options:
   --uninstall          Stop, disable, and remove both service files
   --status             Show systemd status for both services
   --host HOST          Dashboard bind host (default: 127.0.0.1)
+  --lan                Bind dashboard to 0.0.0.0 for LAN access
   --port PORT          Dashboard bind port (default: 8765)
   --config FILE        Config path (default: /etc/dmd/ops-monitor.json)
   -h, --help           Show this help
@@ -210,6 +211,9 @@ parse_args() {
                 shift
                 [[ $# -gt 0 ]] || die "--host requires a value"
                 DASHBOARD_HOST="$1"
+                ;;
+            --lan)
+                DASHBOARD_HOST="0.0.0.0"
                 ;;
             --port)
                 shift

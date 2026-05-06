@@ -104,6 +104,7 @@ sudo bash ops_monitor/install.sh --uninstall
 
 ```bash
 sudo bash ops_monitor/install.sh --host 127.0.0.1 --port 8765
+sudo bash ops_monitor/install.sh --lan --port 8765
 ```
 
 也可以手动部署，但需要先把 service 模板里的 `__PROJECT_DIR__` 替换成实际项目路径：
@@ -119,4 +120,4 @@ sudo systemctl enable --now dmd-ops-dashboard.service
 sudo journalctl -u dmd-ops-monitor.service -f
 ```
 
-仪表盘 service 默认只监听 `127.0.0.1:8765`。需要远程访问时，建议通过 Nginx、SSH tunnel 或内网 VPN 暴露，并在外层增加访问控制。
+仪表盘 service 默认只监听 `127.0.0.1:8765`。局域网访问可使用 `--lan` 绑定到 `0.0.0.0:8765`，然后访问服务器局域网 IP。公网或跨网段访问建议通过 Nginx、SSH tunnel 或内网 VPN 暴露，并在外层增加访问控制。
