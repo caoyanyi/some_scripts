@@ -9,10 +9,32 @@
 </head>
 
 <body>
-    <main class="shell">
-        <header class="topbar">
+    <div class="dashboard-layout">
+        <aside class="sidebar">
+            <div class="brand-block">
+                <span class="brand-mark">OM</span>
+                <div>
+                    <p class="eyebrow">Ops Monitor</p>
+                    <strong>运维控制台</strong>
+                </div>
+            </div>
+            <nav class="side-nav" aria-label="仪表盘导航">
+                <a href="#overview">总览</a>
+                <a href="#resources">资源</a>
+                <a href="#actions">操作</a>
+                <a href="#findings">异常</a>
+            </nav>
+            <div class="side-card">
+                <p class="label">监控窗口</p>
+                <strong id="sideStatusText">加载中</strong>
+                <span id="sideRefreshText">--</span>
+            </div>
+        </aside>
+
+        <main class="shell">
+        <header class="topbar" id="overview">
             <div>
-                <p class="eyebrow">Ops Monitor</p>
+                <p class="eyebrow">System Operations</p>
                 <h1>系统运行仪表盘</h1>
             </div>
             <div class="toolbar">
@@ -36,45 +58,65 @@
         </header>
 
         <section class="status-band" id="statusBand">
-            <div>
+            <div class="status-tile">
                 <span class="status-dot" id="statusDot"></span>
                 <p class="label">当前状态</p>
                 <strong id="statusText">加载中</strong>
             </div>
-            <div>
+            <div class="status-tile">
                 <p class="label">最近采样</p>
                 <strong id="lastSample">--</strong>
             </div>
-            <div>
+            <div class="status-tile">
                 <p class="label">24小时异常</p>
                 <strong id="findingCount">--</strong>
+            </div>
+            <div class="status-tile">
+                <p class="label">进程数量</p>
+                <strong id="processValue">--</strong>
             </div>
         </section>
 
         <section class="metric-grid" aria-label="关键指标">
             <article class="metric-card">
-                <p class="label">负载 / CPU</p>
+                <div class="metric-head">
+                    <p class="label">负载 / CPU</p>
+                    <span>Load</span>
+                </div>
                 <strong id="loadValue">--</strong>
-                <span id="loadMeta">--</span>
+                <span id="loadMeta" class="metric-meta">--</span>
+                <div class="metric-meter"><span id="loadMeter"></span></div>
             </article>
             <article class="metric-card">
-                <p class="label">温度</p>
+                <div class="metric-head">
+                    <p class="label">温度</p>
+                    <span>Temp</span>
+                </div>
                 <strong id="temperatureValue">--</strong>
-                <span>最高传感器读数</span>
+                <span class="metric-meta">最高传感器读数</span>
+                <div class="metric-meter hot"><span id="temperatureMeter"></span></div>
             </article>
             <article class="metric-card">
-                <p class="label">内存</p>
+                <div class="metric-head">
+                    <p class="label">内存</p>
+                    <span>Memory</span>
+                </div>
                 <strong id="memoryValue">--</strong>
-                <span>MemAvailable 估算</span>
+                <span class="metric-meta">MemAvailable 估算</span>
+                <div class="metric-meter memory"><span id="memoryMeter"></span></div>
             </article>
             <article class="metric-card">
-                <p class="label">磁盘</p>
+                <div class="metric-head">
+                    <p class="label">磁盘</p>
+                    <span>Disk</span>
+                </div>
                 <strong id="diskValue">--</strong>
-                <span>配置路径最大值</span>
+                <span class="metric-meta">配置路径最大值</span>
+                <div class="metric-meter disk"><span id="diskMeter"></span></div>
             </article>
         </section>
 
-        <section class="content-grid">
+        <section class="content-grid" id="resources">
             <article class="panel trend-panel">
                 <div class="panel-head">
                     <div>
@@ -127,7 +169,31 @@
             </article>
         </section>
 
-        <section class="panel">
+        <section class="content-grid action-grid" id="actions">
+            <article class="panel">
+                <div class="panel-head">
+                    <div>
+                        <p class="label">系统操作</p>
+                        <h2>诊断动作</h2>
+                    </div>
+                    <span id="actionStatus">待命</span>
+                </div>
+                <div id="actionList" class="action-list"></div>
+            </article>
+
+            <article class="panel command-panel">
+                <div class="panel-head">
+                    <div>
+                        <p class="label">命令输出</p>
+                        <h2 id="actionTitle">诊断结果</h2>
+                    </div>
+                    <span id="actionMeta">--</span>
+                </div>
+                <pre id="actionOutput" class="command-output">请选择一个诊断动作。</pre>
+            </article>
+        </section>
+
+        <section class="panel" id="findings">
             <div class="panel-head">
                 <div>
                     <p class="label">历史异常</p>
@@ -154,7 +220,8 @@
                 </table>
             </div>
         </section>
-    </main>
+        </main>
+    </div>
     <script src="/app.js"></script>
 </body>
 

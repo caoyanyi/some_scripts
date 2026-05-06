@@ -16,13 +16,20 @@ const nodes = {
   statusBand: document.querySelector("#statusBand"),
   statusDot: document.querySelector("#statusDot"),
   statusText: document.querySelector("#statusText"),
+  sideStatusText: document.querySelector("#sideStatusText"),
+  sideRefreshText: document.querySelector("#sideRefreshText"),
   lastSample: document.querySelector("#lastSample"),
   findingCount: document.querySelector("#findingCount"),
+  processValue: document.querySelector("#processValue"),
   loadValue: document.querySelector("#loadValue"),
   loadMeta: document.querySelector("#loadMeta"),
+  loadMeter: document.querySelector("#loadMeter"),
   temperatureValue: document.querySelector("#temperatureValue"),
+  temperatureMeter: document.querySelector("#temperatureMeter"),
   memoryValue: document.querySelector("#memoryValue"),
+  memoryMeter: document.querySelector("#memoryMeter"),
   diskValue: document.querySelector("#diskValue"),
+  diskMeter: document.querySelector("#diskMeter"),
   sampleCount: document.querySelector("#sampleCount"),
   activeFindings: document.querySelector("#activeFindings"),
   findingsTable: document.querySelector("#findingsTable"),
@@ -34,6 +41,11 @@ const nodes = {
   topMemoryList: document.querySelector("#topMemoryList"),
   topCpuTime: document.querySelector("#topCpuTime"),
   topMemoryTime: document.querySelector("#topMemoryTime"),
+  actionList: document.querySelector("#actionList"),
+  actionStatus: document.querySelector("#actionStatus"),
+  actionTitle: document.querySelector("#actionTitle"),
+  actionMeta: document.querySelector("#actionMeta"),
+  actionOutput: document.querySelector("#actionOutput"),
   chart: document.querySelector("#historyChart"),
 };
 
@@ -102,6 +114,17 @@ async function getJson(url) {
   return response.json();
 }
 
+async function postJson(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `请求失败，状态码 ${response.status}`);
+  return data;
+}
+
 async function loadData() {
   const hours = nodes.rangeSelect.value;
   const page = state.findingsPagination.page || 1;
@@ -117,6 +140,11 @@ async function loadData() {
   state.findings = findings.findings || [];
   state.findingsPagination = findings.pagination || state.findingsPagination;
   render();
+}
+
+async function loadActions() {
+  const payload = await getJson("/api/actions");
+  renderActions(payload.actions || []);
 }
 
 function render() {
@@ -135,8 +163,12 @@ function renderSummary() {
 
   nodes.statusDot.style.background = statusColor(status);
   nodes.statusText.textContent = statusLabel(status);
+  nodes.sideStatusText.textContent = statusLabel(status);
   nodes.lastSample.textContent = formatTime(latest.timestamp);
   nodes.findingCount.textContent = `${last24h.total || 0}`;
+  nodes.processValue.textContent = latest.process_count === null || latest.process_count === undefined
+    ? "--"
+    : `${latest.process_count}`;
   nodes.loadValue.textContent = formatNumber(latest.load_per_cpu, 2);
   nodes.loadMeta.textContent = latest.load_1m === null || latest.load_1m === undefined
     ? "--"
@@ -144,6 +176,16 @@ function renderSummary() {
   nodes.temperatureValue.textContent = formatNumber(latest.temperature_celsius, 1, "C");
   nodes.memoryValue.textContent = formatNumber(latest.memory_percent, 1, "%");
   nodes.diskValue.textContent = formatNumber(latest.max_disk_percent, 1, "%");
+  setMeter(nodes.loadMeter, (Number(latest.load_per_cpu) / 2.5) * 100);
+  setMeter(nodes.temperatureMeter, Number(latest.temperature_celsius));
+  setMeter(nodes.memoryMeter, Number(latest.memory_percent));
+  setMeter(nodes.diskMeter, Number(latest.max_disk_percent));
+}
+
+function setMeter(node, value) {
+  if (!node) return;
+  const width = Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
+  node.style.width = `${width}%`;
 }
 
 function chartSeries() {
@@ -285,6 +327,57 @@ function renderTopProcesses() {
   renderProcessList(nodes.topMemoryList, nodes.topMemoryTime, topProcesses.memory || [], "memory");
 }
 
+function renderActions(actions) {
+  if (!nodes.actionList) return;
+  nodes.actionList.innerHTML = actions.length
+    ? actions.map((action) => `
+      <button class="action-button" type="button" data-action="${escapeHtml(action.id)}">
+        <strong>${escapeHtml(action.label)}</strong>
+        <span>${actionHint(action.id)}</span>
+      </button>
+    `).join("")
+    : '<p class="empty">暂无可用诊断动作。</p>';
+}
+
+function actionHint(actionId) {
+  return {
+    uptime: "查看负载和在线时长",
+    disk: "检查各挂载点空间",
+    memory: "查看内存和交换分区",
+    services: "查看监控服务状态",
+    monitor_log: "查看监控服务日志",
+    dashboard_log: "查看仪表盘服务日志",
+    processes: "查看高 CPU 进程",
+  }[actionId] || "执行白名单诊断";
+}
+
+async function runAction(actionId) {
+  const button = [...(nodes.actionList?.querySelectorAll("[data-action]") || [])]
+    .find((item) => item.dataset.action === actionId);
+  if (button) button.disabled = true;
+  nodes.actionStatus.textContent = "执行中";
+  nodes.actionTitle.textContent = "正在执行";
+  nodes.actionMeta.textContent = "--";
+  nodes.actionOutput.textContent = "正在执行诊断动作...";
+
+  try {
+    const result = await postJson("/api/actions", { action: actionId });
+    nodes.actionStatus.textContent = result.exit_code === 0 ? "完成" : "已返回";
+    nodes.actionTitle.textContent = result.label || "诊断结果";
+    nodes.actionMeta.textContent = `${formatTime(result.started_at)} · 退出码 ${result.exit_code ?? "--"}`;
+    nodes.actionOutput.textContent = result.error
+      ? `${result.error}\n\n${result.output || ""}`.trim()
+      : result.output;
+  } catch (error) {
+    nodes.actionStatus.textContent = "失败";
+    nodes.actionTitle.textContent = "执行失败";
+    nodes.actionMeta.textContent = formatTime(Math.floor(Date.now() / 1000));
+    nodes.actionOutput.textContent = error.message;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 function renderProcessList(container, timeNode, processes, rankType) {
   if (!container || !timeNode) return;
   const latestTimestamp = processes[0]?.timestamp;
@@ -337,6 +430,7 @@ function renderRefreshState() {
   if (!state.nextRefreshAt) return;
   const remainingSeconds = Math.max(0, Math.ceil((state.nextRefreshAt - Date.now()) / 1000));
   nodes.refreshState.textContent = `${remainingSeconds} 秒后刷新`;
+  nodes.sideRefreshText.textContent = `${remainingSeconds} 秒后刷新`;
 }
 
 function escapeHtml(value) {
@@ -369,6 +463,12 @@ nodes.refreshSelect.addEventListener("change", () => {
   setupAutoRefresh();
 });
 
+nodes.actionList?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
+  runAction(button.dataset.action);
+});
+
 nodes.prevFindingPage.addEventListener("click", () => {
   state.findingsPagination.page = Math.max(1, Number(state.findingsPagination.page || 1) - 1);
   loadData().catch((error) => {
@@ -390,6 +490,11 @@ window.addEventListener("resize", () => renderChart());
 
 loadData().catch((error) => {
   nodes.statusText.textContent = `加载失败: ${error.message}`;
+  nodes.sideStatusText.textContent = "加载失败";
   nodes.statusDot.style.background = "var(--critical)";
+});
+loadActions().catch((error) => {
+  nodes.actionStatus.textContent = "加载失败";
+  nodes.actionOutput.textContent = error.message;
 });
 setupAutoRefresh();

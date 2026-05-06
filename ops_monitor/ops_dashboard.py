@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Read-only web dashboard for ops monitor history."""
+"""Web dashboard for ops monitor history and whitelisted diagnostics."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import sqlite3
+import subprocess
 import time
 from http import HTTPStatus
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -21,6 +22,40 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parent
 STATIC_ROOT = ROOT / "web"
+ACTION_TIMEOUT_SECONDS = 8
+
+# Keep this list read-only. The dashboard is usually reachable from the LAN, so
+# it must not expose arbitrary shell input or destructive operations.
+DIAGNOSTIC_ACTIONS: dict[str, dict[str, Any]] = {
+    "uptime": {
+        "label": "系统运行时间",
+        "command": ["uptime"],
+    },
+    "disk": {
+        "label": "磁盘空间",
+        "command": ["df", "-h", "-x", "tmpfs", "-x", "devtmpfs"],
+    },
+    "memory": {
+        "label": "内存详情",
+        "command": ["free", "-h"],
+    },
+    "services": {
+        "label": "监控服务状态",
+        "command": ["systemctl", "status", "dmd-ops-monitor.service", "dmd-ops-dashboard.service", "--no-pager"],
+    },
+    "monitor_log": {
+        "label": "监控日志",
+        "command": ["journalctl", "-u", "dmd-ops-monitor.service", "-n", "80", "--no-pager"],
+    },
+    "dashboard_log": {
+        "label": "仪表盘日志",
+        "command": ["journalctl", "-u", "dmd-ops-dashboard.service", "-n", "80", "--no-pager"],
+    },
+    "processes": {
+        "label": "进程快照",
+        "command": ["ps", "-eo", "pid,ppid,stat,pcpu,pmem,etimes,args", "--sort=-pcpu"],
+    },
+}
 
 
 def ensure_dashboard_db(db_path: Path) -> None:
@@ -170,6 +205,49 @@ def paginate_items(items: list[dict[str, Any]], page: int, page_size: int) -> tu
         "page_size": page_size,
         "total": total,
         "total_pages": total_pages,
+    }
+
+
+def available_actions() -> list[dict[str, str]]:
+    return [{"id": action_id, "label": spec["label"]} for action_id, spec in DIAGNOSTIC_ACTIONS.items()]
+
+
+def run_diagnostic_action(action_id: str) -> dict[str, Any]:
+    action = DIAGNOSTIC_ACTIONS.get(action_id)
+    if not action:
+        return {"error": "操作不存在或未被允许"}
+
+    started_at = int(time.time())
+    try:
+        result = subprocess.run(
+            action["command"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=ACTION_TIMEOUT_SECONDS,
+        )
+    except FileNotFoundError:
+        return {"error": "系统缺少执行该操作所需的命令"}
+    except subprocess.TimeoutExpired as exc:
+        partial_output = "\n".join(part for part in [exc.stdout, exc.stderr] if part)
+        return {
+            "id": action_id,
+            "label": action["label"],
+            "started_at": started_at,
+            "exit_code": None,
+            "output": partial_output[:12000],
+            "error": f"操作超过 {ACTION_TIMEOUT_SECONDS} 秒未完成，已停止",
+        }
+
+    output = "\n".join(part for part in [result.stdout, result.stderr] if part).strip()
+    if action_id == "processes":
+        output = "\n".join(output.splitlines()[:80])
+    return {
+        "id": action_id,
+        "label": action["label"],
+        "started_at": started_at,
+        "exit_code": result.returncode,
+        "output": output[:12000] or "命令已完成，没有输出内容。",
     }
 
 
@@ -323,10 +401,19 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.path = "/index.html"
         super().do_GET()
 
+    def do_POST(self) -> None:
+        parsed_url = urlparse(self.path)
+        if parsed_url.path == "/api/actions":
+            self.handle_action()
+            return
+        self.send_json({"error": "接口不存在"}, HTTPStatus.NOT_FOUND)
+
     def handle_api(self, path: str, query: dict[str, list[str]]) -> None:
         try:
             if path == "/api/summary":
                 payload = get_summary(self.db_path)
+            elif path == "/api/actions":
+                payload = {"actions": available_actions()}
             elif path == "/api/history":
                 hours = parse_int(query, "hours", 24, 1, 24 * 90)
                 limit = parse_int(query, "limit", 720, 1, 5000)
@@ -345,6 +432,28 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return
 
         self.send_json(payload)
+
+    def handle_action(self) -> None:
+        content_type = self.headers.get("Content-Type", "")
+        if "application/json" not in content_type:
+            self.send_json({"error": "请求格式必须是 JSON"}, HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+            return
+
+        content_length = int(self.headers.get("Content-Length", "0") or "0")
+        if content_length <= 0 or content_length > 4096:
+            self.send_json({"error": "请求内容长度不正确"}, HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self.send_json({"error": "请求 JSON 无法解析"}, HTTPStatus.BAD_REQUEST)
+            return
+
+        action_id = str(payload.get("action", ""))
+        result = run_diagnostic_action(action_id)
+        status = HTTPStatus.BAD_REQUEST if "error" in result and "output" not in result else HTTPStatus.OK
+        self.send_json(result, status)
 
     def send_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
         response = json.dumps(payload, ensure_ascii=False).encode("utf-8")
