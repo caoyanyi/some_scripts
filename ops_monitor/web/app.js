@@ -58,9 +58,18 @@ function statusColor(status) {
   }[status] || "var(--muted)";
 }
 
+function severityLabel(severity) {
+  return {
+    OK: "健康",
+    INFO: "信息",
+    WARN: "预警",
+    CRITICAL: "严重",
+  }[severity] || severity;
+}
+
 async function getJson(url) {
   const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`请求失败，状态码 ${response.status}`);
   return response.json();
 }
 
@@ -98,7 +107,7 @@ function renderSummary() {
   nodes.loadValue.textContent = formatNumber(latest.load_per_cpu, 2);
   nodes.loadMeta.textContent = latest.load_1m === null || latest.load_1m === undefined
     ? "--"
-    : `1m load ${formatNumber(latest.load_1m, 2)} / ${latest.cpu_count || "--"} CPU`;
+    : `1分钟负载 ${formatNumber(latest.load_1m, 2)} / ${latest.cpu_count || "--"} 核`;
   nodes.temperatureValue.textContent = formatNumber(latest.temperature_celsius, 1, "C");
   nodes.memoryValue.textContent = formatNumber(latest.memory_percent, 1, "%");
   nodes.diskValue.textContent = formatNumber(latest.max_disk_percent, 1, "%");
@@ -141,7 +150,7 @@ function renderChart() {
     context.fillText(`${100 - step * 25}%`, 8, y + 4);
   }
 
-  nodes.sampleCount.textContent = `${state.history.length} samples`;
+  nodes.sampleCount.textContent = `${state.history.length} 条采样`;
   if (state.history.length < 2) {
     context.fillText("暂无足够历史数据", padding.left, height / 2);
     return;
@@ -187,7 +196,7 @@ function findingMarkup(finding) {
   const severityClass = String(finding.severity || "").toLowerCase();
   return `
     <div class="finding-item ${severityClass}">
-      <strong>${finding.severity} · ${finding.finding_key}</strong>
+      <strong>${severityLabel(finding.severity)} · ${finding.finding_key}</strong>
       <p>${formatTime(finding.timestamp)} · ${escapeHtml(finding.message)}</p>
     </div>
   `;
@@ -206,7 +215,7 @@ function renderFindingsTable() {
     ? state.findings.map((finding) => `
       <tr>
         <td>${formatTime(finding.timestamp)}</td>
-        <td><span class="badge ${String(finding.severity).toLowerCase()}">${finding.severity}</span></td>
+        <td><span class="badge ${String(finding.severity).toLowerCase()}">${severityLabel(finding.severity)}</span></td>
         <td>${escapeHtml(finding.finding_key)}</td>
         <td>${escapeHtml(finding.message)}</td>
       </tr>

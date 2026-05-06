@@ -58,6 +58,43 @@ def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     return {key: row[key] for key in row.keys()}
 
 
+def localize_message(message: str) -> str:
+    replacements = [
+        ("system temperature is ", "系统温度当前为 "),
+        ("temperature sensor data was not found", "未找到温度传感器数据"),
+        ("memory usage could not be read from /proc/meminfo", "无法从 /proc/meminfo 读取内存使用率"),
+        ("memory usage is ", "内存使用率当前为 "),
+        ("disk usage on ", "磁盘使用率："),
+        ("disk path ", "磁盘路径 "),
+        (" could not be read", " 无法读取"),
+        ("1m load per CPU ", "1分钟平均负载/CPU "),
+        ("threshold ", "阈值为 "),
+        ("process rule '", "进程规则“"),
+        ("' matched pid ", "”命中 PID "),
+        ("runtime ", "运行时间 "),
+        ("command=", "命令="),
+        ("cleanup=", "清理结果="),
+        ("dry-run: would terminate pid ", "演练模式：将终止 PID "),
+        ("terminated pid ", "已终止 PID "),
+        ("killed pid ", "已强制结束 PID "),
+        (" after SIGTERM grace period", "（SIGTERM 等待超时后）"),
+        ("process already exited", "进程已退出"),
+        ("permission denied", "权限不足"),
+        ("process is in uninterruptible sleep state", "进程处于不可中断睡眠状态"),
+        (" for ", "，已持续 "),
+        ("cpu ", "CPU "),
+        (" failed", "失败"),
+    ]
+    localized = message
+    for english_text, chinese_text in replacements:
+        localized = localized.replace(english_text, chinese_text)
+    return localized.replace(", ", "，").replace("; ", "；")
+
+
+def localize_finding(finding: dict[str, Any]) -> dict[str, Any]:
+    return {**finding, "message": localize_message(str(finding.get("message", "")))}
+
+
 def connect(db_path: Path) -> sqlite3.Connection:
     ensure_dashboard_db(db_path)
     connection = sqlite3.connect(db_path)
@@ -97,7 +134,7 @@ def get_summary(db_path: Path, active_window_seconds: int = 3600) -> dict[str, A
             """,
             (now - active_window_seconds,),
         ).fetchall()
-        active_findings = [row_to_dict(row) for row in active_rows]
+        active_findings = [localize_finding(row_to_dict(row)) for row in active_rows]
 
         counts_row = connection.execute(
             """
@@ -154,7 +191,7 @@ def get_findings(db_path: Path, since_seconds: int, limit: int) -> dict[str, Any
             """,
             (since, limit),
         ).fetchall()
-    findings = [row_to_dict(row) for row in rows]
+    findings = [localize_finding(row_to_dict(row)) for row in rows]
     findings.sort(key=lambda item: (item["timestamp"], severity_rank(item["severity"])), reverse=True)
     return {"generated_at": now, "since": since, "findings": findings}
 
@@ -200,10 +237,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 limit = parse_int(query, "limit", 200, 1, 1000)
                 payload = get_findings(self.db_path, hours * 3600, limit)
             else:
-                self.send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+                self.send_json({"error": "接口不存在"}, HTTPStatus.NOT_FOUND)
                 return
         except sqlite3.Error as exc:
-            self.send_json({"error": f"database error: {exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            self.send_json({"error": f"数据库错误：{exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
 
         self.send_json(payload)
@@ -234,8 +271,8 @@ def main() -> int:
 
     DashboardHandler.db_path = db_path
     server = ThreadingHTTPServer((args.host, args.port), DashboardHandler)
-    print(f"Ops dashboard listening on http://{args.host}:{args.port}")
-    print(f"Reading history database: {db_path}")
+    print(f"运维仪表盘已监听 http://{args.host}:{args.port}")
+    print(f"正在读取历史数据库：{db_path}")
     server.serve_forever()
     return 0
 

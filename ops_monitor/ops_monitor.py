@@ -117,7 +117,7 @@ def load_state(path: Path) -> dict[str, Any]:
         with path.open("r", encoding="utf-8") as state_file:
             state = json.load(state_file)
     except (OSError, json.JSONDecodeError) as exc:
-        LOG.warning("failed to read state file %s: %s", path, exc)
+        LOG.warning("读取状态文件失败 %s: %s", path, exc)
         return {"alerts": {}, "cpu_hot_since": {}}
     state.setdefault("alerts", {})
     state.setdefault("cpu_hot_since", {})
@@ -154,7 +154,7 @@ def collect_processes() -> list[ProcessInfo]:
                 )
             )
         except ValueError:
-            LOG.debug("skipping unparsable ps line: %s", line)
+            LOG.debug("跳过无法解析的进程行: %s", line)
 
     return processes
 
@@ -315,9 +315,9 @@ def check_threshold(
 ) -> Finding | None:
     suffix = f"{unit}" if unit else ""
     if value >= critical_value:
-        return Finding("CRITICAL", key, f"{label} is {value:.1f}{suffix}, threshold {critical_value:.1f}{suffix}")
+        return Finding("CRITICAL", key, f"{label}当前为 {value:.1f}{suffix}，严重阈值为 {critical_value:.1f}{suffix}")
     if value >= warn_value:
-        return Finding("WARN", key, f"{label} is {value:.1f}{suffix}, threshold {warn_value:.1f}{suffix}")
+        return Finding("WARN", key, f"{label}当前为 {value:.1f}{suffix}，预警阈值为 {warn_value:.1f}{suffix}")
     return None
 
 
@@ -334,7 +334,7 @@ def check_load(config: dict[str, Any]) -> list[Finding]:
         float(load_config["warn_1m_per_cpu"]),
         float(load_config["critical_1m_per_cpu"]),
         "load",
-        f"1m load per CPU ({load_1m:.2f}/{cpu_count})",
+        f"1分钟平均负载/CPU（{load_1m:.2f}/{cpu_count}核）",
     )
     return [finding] if finding else []
 
@@ -346,14 +346,14 @@ def check_memory(config: dict[str, Any]) -> list[Finding]:
 
     memory_percent = read_memory_percent()
     if memory_percent is None:
-        return [Finding("WARN", "memory:unknown", "memory usage could not be read from /proc/meminfo")]
+        return [Finding("WARN", "memory:unknown", "无法从 /proc/meminfo 读取内存使用率")]
 
     finding = check_threshold(
         memory_percent,
         float(memory_config["warn_percent"]),
         float(memory_config["critical_percent"]),
         "memory",
-        "memory usage",
+        "内存使用率",
         "%",
     )
     return [finding] if finding else []
@@ -366,14 +366,14 @@ def check_temperature(config: dict[str, Any]) -> list[Finding]:
 
     temperature = read_temperature_celsius()
     if temperature is None:
-        return [Finding("WARN", "temperature:unknown", "temperature sensor data was not found")]
+        return [Finding("WARN", "temperature:unknown", "未找到温度传感器数据")]
 
     finding = check_threshold(
         temperature,
         float(temperature_config["warn_celsius"]),
         float(temperature_config["critical_celsius"]),
         "temperature",
-        "system temperature",
+        "系统温度",
         "C",
     )
     return [finding] if finding else []
@@ -388,14 +388,14 @@ def check_disk(config: dict[str, Any]) -> list[Finding]:
     for disk_path in disk_config.get("paths", ["/"]):
         used_percent = read_disk_percent(str(disk_path))
         if used_percent is None:
-            findings.append(Finding("WARN", f"disk:{disk_path}", f"disk path {disk_path} could not be read"))
+            findings.append(Finding("WARN", f"disk:{disk_path}", f"无法读取磁盘路径 {disk_path}"))
             continue
         finding = check_threshold(
             used_percent,
             float(disk_config["warn_percent"]),
             float(disk_config["critical_percent"]),
             f"disk:{disk_path}",
-            f"disk usage on {disk_path}",
+            f"{disk_path} 磁盘使用率",
             "%",
         )
         if finding:
@@ -423,7 +423,7 @@ def process_matches(process: ProcessInfo, match_terms: list[str]) -> bool:
 
 def terminate_process(process: ProcessInfo, kill_after_seconds: int, dry_run: bool) -> str:
     if dry_run:
-        return f"dry-run: would terminate pid {process.pid} ({process.command})"
+        return f"演练模式：将终止 PID {process.pid}（{process.command}）"
 
     os.kill(process.pid, signal.SIGTERM)
     deadline = time.monotonic() + kill_after_seconds
@@ -431,11 +431,11 @@ def terminate_process(process: ProcessInfo, kill_after_seconds: int, dry_run: bo
         try:
             os.kill(process.pid, 0)
         except ProcessLookupError:
-            return f"terminated pid {process.pid} with SIGTERM"
+            return f"已用 SIGTERM 终止 PID {process.pid}"
         time.sleep(1)
 
     os.kill(process.pid, signal.SIGKILL)
-    return f"killed pid {process.pid} after SIGTERM grace period"
+    return f"SIGTERM 等待超时后已用 SIGKILL 强制结束 PID {process.pid}"
 
 
 def check_processes(
@@ -469,7 +469,7 @@ def check_processes(
 
             max_runtime = int(rule.get("max_runtime_seconds", 0) or 0)
             if max_runtime and process.elapsed_seconds >= max_runtime:
-                reasons.append(f"runtime {process.elapsed_seconds}s >= {max_runtime}s")
+                reasons.append(f"运行时间 {process.elapsed_seconds}秒 >= {max_runtime}秒")
 
             max_cpu = float(rule.get("max_cpu_percent", 0) or 0)
             cpu_grace = int(rule.get("cpu_grace_seconds", 0) or 0)
@@ -477,32 +477,32 @@ def check_processes(
                 seen_hot_keys.add(process_key)
                 hot_since = float(cpu_hot_since.setdefault(process_key, now))
                 if now - hot_since >= cpu_grace:
-                    reasons.append(f"cpu {process.cpu_percent:.1f}% >= {max_cpu:.1f}% for {int(now - hot_since)}s")
+                    reasons.append(f"CPU {process.cpu_percent:.1f}% >= {max_cpu:.1f}%，已持续 {int(now - hot_since)}秒")
             else:
                 cpu_hot_since.pop(process_key, None)
 
             if "D" in process.stat:
-                reasons.append("process is in uninterruptible sleep state")
+                reasons.append("进程处于不可中断睡眠状态")
 
             if not reasons:
                 continue
 
             message = (
-                f"process rule '{rule_name}' matched pid {process.pid}: "
-                f"{'; '.join(reasons)}; command={process.command}"
+                f"进程规则“{rule_name}”命中 PID {process.pid}："
+                f"{'；'.join(reasons)}；命令={process.command}"
             )
 
             if action in {"terminate", "kill"}:
                 kill_after_seconds = int(rule.get("kill_after_seconds", 30))
                 try:
                     cleanup_result = terminate_process(process, kill_after_seconds, bool(config.get("dry_run", True)))
-                    message = f"{message}; cleanup={cleanup_result}"
+                    message = f"{message}；清理结果={cleanup_result}"
                 except ProcessLookupError:
-                    message = f"{message}; cleanup=process already exited"
+                    message = f"{message}；清理结果=进程已退出"
                 except PermissionError as exc:
-                    message = f"{message}; cleanup=permission denied: {exc}"
+                    message = f"{message}；清理结果=权限不足：{exc}"
                 except OSError as exc:
-                    message = f"{message}; cleanup=failed: {exc}"
+                    message = f"{message}；清理结果=失败：{exc}"
 
             findings.append(Finding("CRITICAL", f"process:{process_key}", message))
 
@@ -612,14 +612,14 @@ def emit_alert(finding: Finding, config: dict[str, Any]) -> None:
         try:
             send_webhook(webhook_url, finding)
         except OSError as exc:
-            LOG.error("failed to send webhook alert: %s", exc)
+            LOG.error("发送 Webhook 告警失败: %s", exc)
 
     email_config = alerts_config.get("email", {})
     if email_config.get("enabled"):
         try:
             send_email(email_config, finding)
         except (OSError, smtplib.SMTPException) as exc:
-            LOG.error("failed to send email alert: %s", exc)
+            LOG.error("发送邮件告警失败: %s", exc)
 
 
 def run_checks(
@@ -699,7 +699,7 @@ def main(argv: list[str] | None = None) -> int:
             run_once(config, state)
             save_state(state_path, state)
         except Exception:
-            LOG.exception("ops monitor loop failed")
+            LOG.exception("监控循环执行失败")
         time.sleep(interval_seconds)
 
 
