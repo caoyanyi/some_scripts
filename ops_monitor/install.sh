@@ -44,9 +44,19 @@ require_root_for_write() {
     fi
 }
 
-quote_systemd() {
+escape_systemd_path() {
     local value="$1"
-    printf "'%s'" "${value//\'/\'\\\'\'}"
+    value="${value//\\/\\\\}"
+    value="${value// /\\x20}"
+    value="${value//$'\t'/\\x09}"
+    printf '%s' "$value"
+}
+
+escape_systemd_arg() {
+    local value="$1"
+    value="${value//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    printf '"%s"' "$value"
 }
 
 resolve_paths() {
@@ -85,11 +95,11 @@ write_config_if_missing() {
 }
 
 write_services() {
-    local quoted_project_dir quoted_monitor_script quoted_dashboard_script quoted_config_file
-    quoted_project_dir="$(quote_systemd "$PROJECT_DIR")"
-    quoted_monitor_script="$(quote_systemd "$MONITOR_SCRIPT")"
-    quoted_dashboard_script="$(quote_systemd "$DASHBOARD_SCRIPT")"
-    quoted_config_file="$(quote_systemd "$CONFIG_FILE")"
+    local escaped_project_dir escaped_monitor_script escaped_dashboard_script escaped_config_file
+    escaped_project_dir="$(escape_systemd_path "$PROJECT_DIR")"
+    escaped_monitor_script="$(escape_systemd_arg "$MONITOR_SCRIPT")"
+    escaped_dashboard_script="$(escape_systemd_arg "$DASHBOARD_SCRIPT")"
+    escaped_config_file="$(escape_systemd_arg "$CONFIG_FILE")"
 
     cat > "${SERVICE_DIR}/${MONITOR_SERVICE}" <<EOF_SERVICE
 [Unit]
@@ -99,8 +109,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=${quoted_project_dir}
-ExecStart=/usr/bin/env python3 ${quoted_monitor_script} -c ${quoted_config_file}
+WorkingDirectory=${escaped_project_dir}
+ExecStart=/usr/bin/env python3 ${escaped_monitor_script} -c ${escaped_config_file}
 Restart=always
 RestartSec=10
 User=root
@@ -118,8 +128,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=${quoted_project_dir}
-ExecStart=/usr/bin/env python3 ${quoted_dashboard_script} -c ${quoted_config_file} --host ${DASHBOARD_HOST} --port ${DASHBOARD_PORT}
+WorkingDirectory=${escaped_project_dir}
+ExecStart=/usr/bin/env python3 ${escaped_dashboard_script} -c ${escaped_config_file} --host ${DASHBOARD_HOST} --port ${DASHBOARD_PORT}
 Restart=always
 RestartSec=10
 User=root
