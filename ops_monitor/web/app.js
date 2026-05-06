@@ -2,11 +2,16 @@ const state = {
   summary: null,
   history: [],
   findings: [],
+  refreshTimer: null,
+  countdownTimer: null,
+  nextRefreshAt: null,
 };
 
 const nodes = {
   rangeSelect: document.querySelector("#rangeSelect"),
+  refreshSelect: document.querySelector("#refreshSelect"),
   refreshButton: document.querySelector("#refreshButton"),
+  refreshState: document.querySelector("#refreshState"),
   statusBand: document.querySelector("#statusBand"),
   statusDot: document.querySelector("#statusDot"),
   statusText: document.querySelector("#statusText"),
@@ -21,6 +26,10 @@ const nodes = {
   activeFindings: document.querySelector("#activeFindings"),
   findingsTable: document.querySelector("#findingsTable"),
   historyFindingCount: document.querySelector("#historyFindingCount"),
+  topCpuList: document.querySelector("#topCpuList"),
+  topMemoryList: document.querySelector("#topMemoryList"),
+  topCpuTime: document.querySelector("#topCpuTime"),
+  topMemoryTime: document.querySelector("#topMemoryTime"),
   chart: document.querySelector("#historyChart"),
 };
 
@@ -67,6 +76,22 @@ function severityLabel(severity) {
   }[severity] || severity;
 }
 
+function formatDuration(seconds) {
+  if (!Number.isFinite(Number(seconds))) return "--";
+  const value = Number(seconds);
+  if (value < 60) return `${Math.floor(value)}秒`;
+  if (value < 3600) return `${Math.floor(value / 60)}分钟`;
+  if (value < 86400) return `${Math.floor(value / 3600)}小时`;
+  return `${Math.floor(value / 86400)}天`;
+}
+
+function formatRss(rssKb) {
+  const value = Number(rssKb);
+  if (!Number.isFinite(value)) return "--";
+  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} GB`;
+  return `${(value / 1024).toFixed(1)} MB`;
+}
+
 async function getJson(url) {
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) throw new Error(`请求失败，状态码 ${response.status}`);
@@ -92,6 +117,7 @@ function render() {
   renderChart();
   renderActiveFindings();
   renderFindingsTable();
+  renderTopProcesses();
 }
 
 function renderSummary() {
@@ -223,6 +249,66 @@ function renderFindingsTable() {
     : '<tr><td colspan="4" class="empty">所选时间范围内没有异常记录。</td></tr>';
 }
 
+function renderTopProcesses() {
+  const topProcesses = state.summary?.top_processes || {};
+  renderProcessList(nodes.topCpuList, nodes.topCpuTime, topProcesses.cpu || [], "cpu");
+  renderProcessList(nodes.topMemoryList, nodes.topMemoryTime, topProcesses.memory || [], "memory");
+}
+
+function renderProcessList(container, timeNode, processes, rankType) {
+  if (!container || !timeNode) return;
+  const latestTimestamp = processes[0]?.timestamp;
+  timeNode.textContent = latestTimestamp ? `采样 ${formatTime(latestTimestamp)}` : "--";
+  container.innerHTML = processes.length
+    ? processes.map((process) => processMarkup(process, rankType)).join("")
+    : '<p class="empty">暂无进程采样数据。</p>';
+}
+
+function processMarkup(process, rankType) {
+  const primaryPercent = rankType === "memory" ? process.memory_percent : process.cpu_percent;
+  const meterWidth = Math.max(1, Math.min(100, Number(primaryPercent) || 0));
+  const meterClass = rankType === "memory" ? "process-meter memory" : "process-meter";
+  return `
+    <div class="process-row">
+      <div class="process-main">
+        <strong>#${process.rank_position} · PID ${process.pid}</strong>
+        <code title="${escapeHtml(process.command)}">${escapeHtml(process.command)}</code>
+      </div>
+      <div class="process-stats">
+        <span>CPU ${formatNumber(process.cpu_percent, 1, "%")} · 内存 ${formatNumber(process.memory_percent, 1, "%")}</span>
+        <span>RSS ${formatRss(process.rss_kb)} · 运行 ${formatDuration(process.elapsed_seconds)}</span>
+        <div class="${meterClass}"><span style="width: ${meterWidth}%"></span></div>
+      </div>
+    </div>
+  `;
+}
+
+function setupAutoRefresh() {
+  if (state.refreshTimer) clearInterval(state.refreshTimer);
+  if (state.countdownTimer) clearInterval(state.countdownTimer);
+
+  const intervalSeconds = Number(nodes.refreshSelect.value);
+  if (!intervalSeconds) {
+    state.nextRefreshAt = null;
+    nodes.refreshState.textContent = "自动刷新已关闭";
+    return;
+  }
+
+  state.nextRefreshAt = Date.now() + intervalSeconds * 1000;
+  state.refreshTimer = setInterval(() => {
+    loadData().catch(() => undefined);
+    state.nextRefreshAt = Date.now() + intervalSeconds * 1000;
+  }, intervalSeconds * 1000);
+  state.countdownTimer = setInterval(renderRefreshState, 1000);
+  renderRefreshState();
+}
+
+function renderRefreshState() {
+  if (!state.nextRefreshAt) return;
+  const remainingSeconds = Math.max(0, Math.ceil((state.nextRefreshAt - Date.now()) / 1000));
+  nodes.refreshState.textContent = `${remainingSeconds} 秒后刷新`;
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -237,6 +323,7 @@ nodes.refreshButton.addEventListener("click", () => {
     nodes.statusText.textContent = `加载失败: ${error.message}`;
     nodes.statusDot.style.background = "var(--critical)";
   });
+  setupAutoRefresh();
 });
 
 nodes.rangeSelect.addEventListener("change", () => {
@@ -244,6 +331,11 @@ nodes.rangeSelect.addEventListener("change", () => {
     nodes.statusText.textContent = `加载失败: ${error.message}`;
     nodes.statusDot.style.background = "var(--critical)";
   });
+  setupAutoRefresh();
+});
+
+nodes.refreshSelect.addEventListener("change", () => {
+  setupAutoRefresh();
 });
 
 window.addEventListener("resize", () => renderChart());
@@ -252,7 +344,4 @@ loadData().catch((error) => {
   nodes.statusText.textContent = `加载失败: ${error.message}`;
   nodes.statusDot.style.background = "var(--critical)";
 });
-
-setInterval(() => {
-  loadData().catch(() => undefined);
-}, 30000);
+setupAutoRefresh();

@@ -52,6 +52,24 @@ def ensure_dashboard_db(db_path: Path) -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS process_samples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL,
+                rank_type TEXT NOT NULL,
+                rank_position INTEGER NOT NULL,
+                pid INTEGER NOT NULL,
+                ppid INTEGER NOT NULL,
+                stat TEXT NOT NULL,
+                elapsed_seconds INTEGER NOT NULL,
+                cpu_percent REAL NOT NULL,
+                memory_percent REAL NOT NULL,
+                rss_kb INTEGER NOT NULL,
+                command TEXT NOT NULL
+            )
+            """
+        )
 
 
 def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
@@ -116,6 +134,28 @@ def overall_status(latest: dict[str, Any] | None, active_findings: list[dict[str
     return "OK"
 
 
+def get_latest_process_samples(connection: sqlite3.Connection, rank_type: str, limit: int = 8) -> list[dict[str, Any]]:
+    latest_row = connection.execute(
+        "SELECT MAX(timestamp) AS timestamp FROM process_samples WHERE rank_type = ?",
+        (rank_type,),
+    ).fetchone()
+    if not latest_row or latest_row["timestamp"] is None:
+        return []
+
+    rows = connection.execute(
+        """
+        SELECT timestamp, rank_type, rank_position, pid, ppid, stat, elapsed_seconds,
+               cpu_percent, memory_percent, rss_kb, command
+        FROM process_samples
+        WHERE rank_type = ? AND timestamp = ?
+        ORDER BY rank_position ASC
+        LIMIT ?
+        """,
+        (rank_type, latest_row["timestamp"], limit),
+    ).fetchall()
+    return [row_to_dict(row) for row in rows]
+
+
 def get_summary(db_path: Path, active_window_seconds: int = 3600) -> dict[str, Any]:
     now = int(time.time())
     with connect(db_path) as connection:
@@ -148,6 +188,10 @@ def get_summary(db_path: Path, active_window_seconds: int = 3600) -> dict[str, A
             (now - 86400,),
         ).fetchone()
         counts = row_to_dict(counts_row) if counts_row else {"total": 0, "critical": 0, "warn": 0}
+        top_processes = {
+            "cpu": get_latest_process_samples(connection, "cpu"),
+            "memory": get_latest_process_samples(connection, "memory"),
+        }
 
     active_findings.sort(key=lambda item: (severity_rank(item["severity"]), item["timestamp"]), reverse=True)
     return {
@@ -157,6 +201,7 @@ def get_summary(db_path: Path, active_window_seconds: int = 3600) -> dict[str, A
         "active_window_seconds": active_window_seconds,
         "active_findings": active_findings,
         "last_24h": counts,
+        "top_processes": top_processes,
     }
 
 

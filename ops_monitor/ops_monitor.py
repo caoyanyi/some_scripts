@@ -22,7 +22,7 @@ from typing import Any
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "interval_seconds": 60,
+    "interval_seconds": 15,
     "dry_run": True,
     "log_file": "ops_monitor/ops-monitor.log",
     "state_file": "ops_monitor/ops-monitor.state.json",
@@ -57,6 +57,8 @@ class ProcessInfo:
     stat: str
     elapsed_seconds: int
     cpu_percent: float
+    memory_percent: float
+    rss_kb: int
     command: str
 
 
@@ -133,15 +135,15 @@ def save_state(path: Path, state: dict[str, Any]) -> None:
 
 
 def collect_processes() -> list[ProcessInfo]:
-    command = ["ps", "-eo", "pid=,ppid=,stat=,etimes=,pcpu=,args="]
+    command = ["ps", "-eo", "pid=,ppid=,stat=,etimes=,pcpu=,pmem=,rss=,args="]
     result = subprocess.run(command, check=True, capture_output=True, text=True)
     processes: list[ProcessInfo] = []
 
     for line in result.stdout.splitlines():
-        parts = line.strip().split(None, 5)
-        if len(parts) < 6:
+        parts = line.strip().split(None, 7)
+        if len(parts) < 8:
             continue
-        pid, ppid, stat, elapsed, cpu_percent, process_command = parts
+        pid, ppid, stat, elapsed, cpu_percent, memory_percent, rss_kb, process_command = parts
         try:
             processes.append(
                 ProcessInfo(
@@ -150,6 +152,8 @@ def collect_processes() -> list[ProcessInfo]:
                     stat=stat,
                     elapsed_seconds=int(elapsed),
                     cpu_percent=float(cpu_percent),
+                    memory_percent=float(memory_percent),
+                    rss_kb=int(rss_kb),
                     command=process_command,
                 )
             )
@@ -188,8 +192,27 @@ def ensure_history_db(db_path: Path) -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS process_samples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL,
+                rank_type TEXT NOT NULL,
+                rank_position INTEGER NOT NULL,
+                pid INTEGER NOT NULL,
+                ppid INTEGER NOT NULL,
+                stat TEXT NOT NULL,
+                elapsed_seconds INTEGER NOT NULL,
+                cpu_percent REAL NOT NULL,
+                memory_percent REAL NOT NULL,
+                rss_kb INTEGER NOT NULL,
+                command TEXT NOT NULL
+            )
+            """
+        )
         connection.execute("CREATE INDEX IF NOT EXISTS idx_findings_timestamp ON findings(timestamp)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_findings_key ON findings(finding_key)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_process_samples_timestamp ON process_samples(timestamp)")
 
 
 def prune_history(db_path: Path, retention_days: int, now: int) -> None:
@@ -199,9 +222,41 @@ def prune_history(db_path: Path, retention_days: int, now: int) -> None:
     with sqlite3.connect(db_path) as connection:
         connection.execute("DELETE FROM metric_samples WHERE timestamp < ?", (cutoff,))
         connection.execute("DELETE FROM findings WHERE timestamp < ?", (cutoff,))
+        connection.execute("DELETE FROM process_samples WHERE timestamp < ?", (cutoff,))
 
 
-def save_history_sample(db_path: Path, snapshot: MetricsSnapshot, findings: list[Finding]) -> None:
+def top_process_rows(timestamp: int, processes: list[ProcessInfo], limit: int = 8) -> list[tuple[Any, ...]]:
+    rows: list[tuple[Any, ...]] = []
+    rank_specs = [
+        ("cpu", sorted(processes, key=lambda process: process.cpu_percent, reverse=True)),
+        ("memory", sorted(processes, key=lambda process: process.memory_percent, reverse=True)),
+    ]
+    for rank_type, ranked_processes in rank_specs:
+        for index, process in enumerate(ranked_processes[:limit], start=1):
+            rows.append(
+                (
+                    timestamp,
+                    rank_type,
+                    index,
+                    process.pid,
+                    process.ppid,
+                    process.stat,
+                    process.elapsed_seconds,
+                    process.cpu_percent,
+                    process.memory_percent,
+                    process.rss_kb,
+                    process.command,
+                )
+            )
+    return rows
+
+
+def save_history_sample(
+    db_path: Path,
+    snapshot: MetricsSnapshot,
+    findings: list[Finding],
+    processes: list[ProcessInfo] | None = None,
+) -> None:
     ensure_history_db(db_path)
     with sqlite3.connect(db_path) as connection:
         connection.execute(
@@ -237,6 +292,25 @@ def save_history_sample(db_path: Path, snapshot: MetricsSnapshot, findings: list
             """,
             [(snapshot.timestamp, finding.severity, finding.key, finding.message) for finding in findings],
         )
+        if processes:
+            connection.executemany(
+                """
+                INSERT INTO process_samples (
+                    timestamp,
+                    rank_type,
+                    rank_position,
+                    pid,
+                    ppid,
+                    stat,
+                    elapsed_seconds,
+                    cpu_percent,
+                    memory_percent,
+                    rss_kb,
+                    command
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                top_process_rows(snapshot.timestamp, processes),
+            )
 
 
 def get_load_average() -> tuple[float, float, float]:
@@ -648,7 +722,7 @@ def run_once(config: dict[str, Any], state: dict[str, Any]) -> int:
     if history_db:
         db_path = Path(history_db)
         snapshot = collect_metrics_snapshot(config, processes, now_int)
-        save_history_sample(db_path, snapshot, findings)
+        save_history_sample(db_path, snapshot, findings, processes)
         prune_history(db_path, int(config.get("history_retention_days", 30)), now_int)
 
     for finding in findings:

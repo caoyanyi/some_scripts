@@ -1,5 +1,5 @@
 {
-    "interval_seconds": 60,
+    "interval_seconds": 15,
     "dry_run": true,
     "log_file": "ops_monitor/ops-monitor.log",
     "state_file": "ops_monitor/ops-monitor.state.json",
